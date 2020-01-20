@@ -37,6 +37,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx.h"
 
+
 /** @addtogroup STM32F4xx_StdPeriph_Driver
   * @{
   */
@@ -354,6 +355,8 @@ typedef struct
 #define IS_USART_ADDRESS(ADDRESS) ((ADDRESS) <= 0xF)
 #define IS_USART_DATA(DATA) ((DATA) <= 0x1FF)
 
+
+
 /**
   * @}
   */ 
@@ -361,8 +364,20 @@ typedef struct
 /**
   * @}
   */ 
+/*#define USART_STRING_DELIMITER              '\n'*/
 
 /* Exported macro ------------------------------------------------------------*/
+/*buffer size can be modified*/
+/*
+#define USART1_BUFFER_SIZE		32
+#define USART2_BUFFER_SIZE 		32
+#define USART3_BUFFER_SIZE 		32
+#define USART4_BUFFER_SIZE 		32
+#define USART5_BUFFER_SIZE 		32
+#define USART6_BUFFER_SIZE 		32
+#define USART7_BUFFER_SIZE 		32
+*/
+
 /* Exported functions --------------------------------------------------------*/  
 
 /*  Function used to set the USART configuration to the default reset state ***/ 
@@ -380,7 +395,12 @@ void USART_OneBitMethodCmd(USART_TypeDef* USARTx, FunctionalState NewState);
 
 /* Data transfers functions ***************************************************/ 
 void USART_SendData(USART_TypeDef* USARTx, uint16_t Data);
-uint16_t USART_ReceiveData(USART_TypeDef* USARTx);
+void USART_SendString(USART_TypeDef* USARTx, char *Data, uint32_t length);
+void USART_ReceiverHandler(void);
+void USART_SetCustomStringEndCharacter(USART_TypeDef* USARTx, uint8_t Character);
+/*uint8_t USART_BufferEmpty(USART_TypeDef* USARTx);*/
+uint8_t USART_ReceiveData(USART_TypeDef* USARTx);
+uint16_t USART_ReceiveString(USART_TypeDef* USARTx, char* user_buffer, uint16_t buffsize);
 
 /* Multi-Processor Communication functions ************************************/
 void USART_SetAddress(USART_TypeDef* USARTx, uint8_t USART_Address);

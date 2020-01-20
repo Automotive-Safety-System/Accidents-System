@@ -149,7 +149,14 @@ void SysTick_Handler(void)
 /*  available peripheral interrupt handler's name please refer to the startup */
 /*  file (startup_stm32f40xx.s/startup_stm32f427x.s).                         */
 /******************************************************************************/
+void USART2_IRQHandler(void){
+	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) == SET){
+		USART_ReceiverHandler();
 
+
+	}
+	//USART_ClearFlag(USART2, USART_FLAG_RXNE);
+}
 /**
   * @brief  This function handles PPP interrupt request.
   * @param  None
