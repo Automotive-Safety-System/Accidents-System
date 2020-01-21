@@ -21,11 +21,11 @@ int main(void)
   /**
   *  IMPORTANT NOTE!
   *  The symbol VECT_TAB_SRAM needs to be defined when building the project
-  *  if code has been located to RAM and interrupts are used. 
+  *  if code has been located to RAM and interrupts are used.
   *  Otherwise the interrupt table located in flash will be used.
-  *  See also the <system_*.c> file and how the SystemInit() function updates 
-  *  SCB->VTOR register.  
-  *  E.g.  SCB->VTOR = 0x20000000;  
+  *  See also the <system_*.c> file and how the SystemInit() function updates
+  *  SCB->VTOR register.
+  *  E.g.  SCB->VTOR = 0x20000000;
   */
 
   /* TODO - Add your application code here */
@@ -48,3 +48,12 @@ int main(void)
 	i++;
   }
 }
+
+
+
+
+/*dummy refrences for compilation conflicts
+ * remove these only when if you need to implement them in main*/
+void vApplicationTickHook(void){}
+void taskCHECK_FOR_STACK_OVERFLOW(void){}
+void vApplicationStackOverflowHook(){}
