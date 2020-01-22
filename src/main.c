@@ -2,8 +2,8 @@
 #include "stm32f4xx.h"
 #include "stm32f4_discovery.h"
 
-#include "../FreeRTOS_Source/include/FreeRTOS.h"
-#include "../FreeRTOS_Source/include/task.h"
+#include "FreeRTOS.h"
+#include "task.h"
 /* Private macro */
 /* Private variables */
 /* Private function prototypes */

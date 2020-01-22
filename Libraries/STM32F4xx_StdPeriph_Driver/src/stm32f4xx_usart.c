@@ -91,6 +91,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_usart.h"
 #include "stm32f4xx_rcc.h"
+#include "stm32f4_discovery.h"
 
 /** @addtogroup STM32F4xx_StdPeriph_Driver
   * @{
@@ -121,7 +122,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
-/*  uint8_t USART1_Buffer[USART1_BUFFER_SIZE];
+  uint8_t USART1_Buffer[USART1_BUFFER_SIZE];
   uint8_t USART2_Buffer[USART2_BUFFER_SIZE];
   uint8_t USART3_Buffer[USART3_BUFFER_SIZE];
   uint8_t USART4_Buffer[USART4_BUFFER_SIZE];
@@ -136,9 +137,7 @@
   TM_BUFFER_t USART5_buff_obj = {USART5_BUFFER_SIZE, 0, 0, USART5_Buffer, 0, USART_STRING_DELIMITER};
   TM_BUFFER_t USART6_buff_obj = {USART6_BUFFER_SIZE, 0, 0, USART6_Buffer, 0, USART_STRING_DELIMITER};
   TM_BUFFER_t USART7_buff_obj = {USART7_BUFFER_SIZE, 0, 0, USART7_Buffer, 0, USART_STRING_DELIMITER};
-  */
-
- /* Private function prototypes -----------------------------------------------*/
+  /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
 /** @defgroup USART_Private_Functions
@@ -583,6 +582,7 @@ void USART_SendData(USART_TypeDef* USARTx, uint16_t Data)
 	  }
   /* Transmit Data */
   USARTx->DR = (Data & (uint16_t)0x01FF);
+
 }
 
 void USART_SendString(USART_TypeDef* USARTx, char *Data, uint32_t length){
@@ -598,6 +598,7 @@ void USART_SendString(USART_TypeDef* USARTx, char *Data, uint32_t length){
 		  }
 	  /* Transmit Data */
 	  USARTx->DR = (Data[i] & (uint16_t)0x01FF);
+
 	  }
 }
 
@@ -607,24 +608,18 @@ void USART_ReceiverHandler(void){
 	uint8_t c;
 	c = (uint16_t)(USART2->DR & (uint16_t)0x01FF);
 
-	/*TM_BUFFER_Write(&USART2_buff_obj, &c, 1);*/
-	/*TODO add received data "c" to buffer here*/
+	TM_BUFFER_Write(&USART2_buff_obj, &c, 1);
 
 }
 
-/*
 void USART_SetCustomStringEndCharacter(USART_TypeDef* USARTx, uint8_t Character) {
 	if (USARTx == USART2)
 	TM_BUFFER_SetStringDelimiter(&USART2_buff_obj, Character);
 }
-*/
 
-/*
 uint8_t USART_BufferEmpty(USART_TypeDef* USARTx) {
 	return TM_BUFFER_GetFull(USART2) == 0;
 }
-*/
-
 /**
   * @brief  Returns the most recent received data by the USARTx peripheral.
   * @param  USARTx: where x can be 1, 2, 3, 4, 5, 6, 7 or 8 to select the USART or 
@@ -636,14 +631,11 @@ uint8_t USART_ReceiveData(USART_TypeDef* USARTx){
   /* Check the parameters */
   assert_param(IS_USART_ALL_PERIPH(USARTx));
 	uint8_t c;
-	/*
-	//TODO get char from buffer to the user
 	TM_BUFFER_t* u = &USART2_buff_obj;
-	// Read character from buffer
+	/* Read character from buffer */
 	if (TM_BUFFER_Read(u, &c, 1)) {
 		return c;
 	}
-	*/
 
 	/* Read was not successful */
 	return 0;
@@ -652,12 +644,8 @@ uint8_t USART_ReceiveData(USART_TypeDef* USARTx){
 
 uint16_t USART_ReceiveString(USART_TypeDef* USARTx, char* user_buffer, uint16_t buffsize){
 
-	/*
-	 //TODO -> get string from buffer to the user
 	TM_BUFFER_t* u = &USART2_buff_obj;
 	return TM_BUFFER_ReadString(u, user_buffer, buffsize);
-	 */
-	return 0;
 }
 
 /**

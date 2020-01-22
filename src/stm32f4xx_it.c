@@ -117,12 +117,16 @@ void DebugMon_Handler(void)
 /*  file (startup_stm32f40xx.s/startup_stm32f427x.s).                         */
 /******************************************************************************/
 void USART2_IRQHandler(void){
-	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) == SET){
-		USART_ReceiverHandler();
-
-
+	uint8_t c;
+	int i;
+	if (USART_GetFlagStatus(USART2, USART_FLAG_TC) != RESET){
+		USART_ClearITPendingBit(USART2, USART_IT_TC);
 	}
-	//USART_ClearFlag(USART2, USART_FLAG_RXNE);
+
+	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET){
+		USART_ReceiverHandler();
+	}
+
 }
 /**
   * @brief  This function handles PPP interrupt request.
