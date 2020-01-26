@@ -585,12 +585,27 @@ void USART_SendData(USART_TypeDef* USARTx, uint16_t Data)
 
 }
 
-void USART_SendString(USART_TypeDef* USARTx, char *Data, uint32_t length){
+void USART_SendString(USART_TypeDef* USARTx, char *Data, int32_t length){
 	uint32_t i = 0;
 	/* Check the parameters */
 	  assert_param(IS_USART_ALL_PERIPH(USARTx));
 	  assert_param(IS_USART_DATA(Data));
+	  if (length == -1 ){
 
+		  while (Data[i] != '\0'){
+			  if (USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET)
+				  while(USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET){
+					  //wait the buffer to be empty
+				  }
+			  /* Transmit Data */
+			  USARTx->DR = (Data[i] & (uint16_t)0x01FF);
+
+			  }
+			i++;
+
+	  }
+
+	  else{
 	  for (i= 0; i<length; i++){
 	  if (USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET)
 		  while(USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET){
@@ -600,25 +615,52 @@ void USART_SendString(USART_TypeDef* USARTx, char *Data, uint32_t length){
 	  USARTx->DR = (Data[i] & (uint16_t)0x01FF);
 
 	  }
+	  }
 }
 
 
 /* receiver handler >> use it in stm32f4xx_it.c in the USART_IRQ handler*/
-void USART_ReceiverHandler(void){
+void USART_ReceiverHandler(USART_TypeDef* USARTx){
 	uint8_t c;
-	c = (uint16_t)(USART2->DR & (uint16_t)0x01FF);
+	c = (uint16_t)(USARTx->DR & (uint16_t)0x01FF);
+	if (USARTx == USART1)
+		TM_BUFFER_Write(&USART1_buff_obj, &c, 1);
+	else if (USARTx == USART2)
+		TM_BUFFER_Write(&USART2_buff_obj, &c, 1);
+	else if (USARTx == USART3)
+		TM_BUFFER_Write(&USART3_buff_obj, &c, 1);
+	else if (USARTx == UART4)
+		TM_BUFFER_Write(&USART4_buff_obj, &c, 1);
+	else if (USARTx == UART5)
+		TM_BUFFER_Write(&USART5_buff_obj, &c, 1);
+	else if (USARTx == USART6)
+		TM_BUFFER_Write(&USART6_buff_obj, &c, 1);
+	else if (USARTx == UART7)
+		TM_BUFFER_Write(&USART7_buff_obj, &c, 1);
 
-	TM_BUFFER_Write(&USART2_buff_obj, &c, 1);
 
 }
 
 void USART_SetCustomStringEndCharacter(USART_TypeDef* USARTx, uint8_t Character) {
-	if (USARTx == USART2)
-	TM_BUFFER_SetStringDelimiter(&USART2_buff_obj, Character);
+	if (USARTx == USART1)
+		TM_BUFFER_SetStringDelimiter(&USART1_buff_obj, Character);
+	else if (USARTx == USART2)
+		TM_BUFFER_SetStringDelimiter(&USART2_buff_obj, Character);
+	else if (USARTx == USART3)
+		TM_BUFFER_SetStringDelimiter(&USART3_buff_obj, Character);
+	else if (USARTx == UART4)
+		TM_BUFFER_SetStringDelimiter(&USART4_buff_obj, Character);
+	else if (USARTx == UART5)
+		TM_BUFFER_SetStringDelimiter(&USART5_buff_obj, Character);
+	else if (USARTx == USART6)
+		TM_BUFFER_SetStringDelimiter(&USART6_buff_obj, Character);
+	else if (USARTx == UART7)
+		TM_BUFFER_SetStringDelimiter(&USART7_buff_obj, Character);
+
 }
 
 uint8_t USART_BufferEmpty(USART_TypeDef* USARTx) {
-	return TM_BUFFER_GetFull(USART2) == 0;
+	return TM_BUFFER_GetFull(USARTx) == 0;
 }
 /**
   * @brief  Returns the most recent received data by the USARTx peripheral.
@@ -631,7 +673,21 @@ uint8_t USART_ReceiveData(USART_TypeDef* USARTx){
   /* Check the parameters */
   assert_param(IS_USART_ALL_PERIPH(USARTx));
 	uint8_t c;
-	TM_BUFFER_t* u = &USART2_buff_obj;
+	TM_BUFFER_t* u;
+	if (USARTx == USART1)
+		u = &USART1_buff_obj;
+	else if (USARTx == USART2)
+			u = &USART2_buff_obj;
+	else if (USARTx == USART3)
+				u = &USART3_buff_obj;
+	else if (USARTx == UART4)
+				u = &USART4_buff_obj;
+	else if (USARTx == UART5)
+				u = &USART5_buff_obj;
+	else if (USARTx == USART6)
+				u = &USART6_buff_obj;
+	else if (USARTx == UART7)
+				u = &USART7_buff_obj;
 	/* Read character from buffer */
 	if (TM_BUFFER_Read(u, &c, 1)) {
 		return c;
@@ -644,7 +700,22 @@ uint8_t USART_ReceiveData(USART_TypeDef* USARTx){
 
 uint16_t USART_ReceiveString(USART_TypeDef* USARTx, char* user_buffer, uint16_t buffsize){
 
-	TM_BUFFER_t* u = &USART2_buff_obj;
+	TM_BUFFER_t* u ;
+	if (USARTx == USART1)
+		u = &USART1_buff_obj;
+	else if (USARTx == USART2)
+			u = &USART2_buff_obj;
+	else if (USARTx == USART3)
+				u = &USART3_buff_obj;
+	else if (USARTx == UART4)
+				u = &USART4_buff_obj;
+	else if (USARTx == UART5)
+				u = &USART5_buff_obj;
+	else if (USARTx == USART6)
+				u = &USART6_buff_obj;
+	else if (USARTx == UART7)
+				u = &USART7_buff_obj;
+
 	return TM_BUFFER_ReadString(u, user_buffer, buffsize);
 }
 

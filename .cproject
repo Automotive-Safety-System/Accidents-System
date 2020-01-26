@@ -35,6 +35,7 @@
 								</option>
 								<option id="com.atollic.truestudio.as.general.incpath.868494220" name="Include path" superClass="com.atollic.truestudio.as.general.incpath" useByScannerDiscovery="false" valueType="includePath">
 									<listOptionValue builtIn="false" value="../src"/>
+									<listOptionValue builtIn="false" value="../Libraries/HAL"/>
 									<listOptionValue builtIn="false" value="../FreeRTOS_Source/portable/GCC/ARM_CM4F"/>
 									<listOptionValue builtIn="false" value="../FreeRTOS_Source/include"/>
 									<listOptionValue builtIn="false" value="../Libraries/CMSIS/Include"/>
@@ -54,6 +55,7 @@
 								</option>
 								<option id="com.atollic.truestudio.gcc.directories.select.1623608126" name="Include path" superClass="com.atollic.truestudio.gcc.directories.select" useByScannerDiscovery="false" valueType="includePath">
 									<listOptionValue builtIn="false" value="../FreeRTOS_Source/portable/GCC/ARM_CM4F"/>
+									<listOptionValue builtIn="false" value="../Libraries/HAL"/>
 									<listOptionValue builtIn="false" value="../FreeRTOS_Source/include"/>
 									<listOptionValue builtIn="false" value="../src"/>
 									<listOptionValue builtIn="false" value="../Libraries/CMSIS/Include"/>
@@ -81,7 +83,7 @@
 								<option id="com.atollic.truestudio.ld.libraries.list.1588982436" name="Libraries" superClass="com.atollic.truestudio.ld.libraries.list" useByScannerDiscovery="false" valueType="libs">
 									<listOptionValue builtIn="false" value="m"/>
 								</option>
-								<option id="com.atollic.truestudio.ld.libraries.searchpath.2064746563" name="Library search path" superClass="com.atollic.truestudio.ld.libraries.searchpath" useByScannerDiscovery="false" valueType="libPaths"/>
+								<option id="com.atollic.truestudio.ld.libraries.searchpath.2064746563" name="Library search path" superClass="com.atollic.truestudio.ld.libraries.searchpath" useByScannerDiscovery="false"/>
 								<inputType id="com.atollic.truestudio.ld.input.452509495" name="Input" superClass="com.atollic.truestudio.ld.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -128,9 +130,6 @@
 						</toolChain>
 					</folderInfo>
 					<fileInfo id="com.atollic.truestudio.exe.debug.826054947.1799436363" name="FreeRTOSConfig.h" rcbsApplicability="disable" resourcePath="src/FreeRTOSConfig.h" toolsToInvoke=""/>
-					<fileInfo id="com.atollic.truestudio.exe.debug.826054947.1479137333" name="stm32f4xx_it.c" rcbsApplicability="disable" resourcePath="src/stm32f4xx_it.c" toolsToInvoke="com.atollic.truestudio.exe.debug.toolchain.gcc.2095815598.474879737">
-						<tool id="com.atollic.truestudio.exe.debug.toolchain.gcc.2095815598.474879737" name="C Compiler" superClass="com.atollic.truestudio.exe.debug.toolchain.gcc.2095815598"/>
-					</fileInfo>
 					<sourceEntries>
 						<entry excluding="portable/MemMang/heap_2.c|portable/MemMang/heap_3.c|portable/MemMang/heap_4.c|portable/MemMang/heap_5.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="FreeRTOS_Source"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Libraries"/>

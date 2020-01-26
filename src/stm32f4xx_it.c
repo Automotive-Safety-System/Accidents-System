@@ -117,14 +117,46 @@ void DebugMon_Handler(void)
 /*  file (startup_stm32f40xx.s/startup_stm32f427x.s).                         */
 /******************************************************************************/
 void USART2_IRQHandler(void){
-	uint8_t c;
-	int i;
+
 	if (USART_GetFlagStatus(USART2, USART_FLAG_TC) != RESET){
 		USART_ClearITPendingBit(USART2, USART_IT_TC);
 	}
 
 	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET){
-		USART_ReceiverHandler();
+		USART_ReceiverHandler(USART2);
+	}
+
+}
+void USART3_IRQHandler(void){
+
+	if (USART_GetFlagStatus(USART3, USART_FLAG_TC) != RESET){
+		USART_ClearITPendingBit(USART3, USART_IT_TC);
+	}
+
+	if (USART_GetFlagStatus(USART3, USART_FLAG_RXNE) != RESET){
+		USART_ReceiverHandler(USART3);
+	}
+
+}
+void USART4_IRQHandler(void){
+
+	if (USART_GetFlagStatus(UART4, USART_FLAG_TC) != RESET){
+		USART_ClearITPendingBit(UART4, USART_IT_TC);
+	}
+
+	if (USART_GetFlagStatus(UART4, USART_FLAG_RXNE) != RESET){
+		USART_ReceiverHandler(UART4);
+	}
+
+}
+void USART5_IRQHandler(void){
+
+	if (USART_GetFlagStatus(UART5, USART_FLAG_TC) != RESET){
+		USART_ClearITPendingBit(UART5, USART_IT_TC);
+	}
+
+	if (USART_GetFlagStatus(UART5, USART_FLAG_RXNE) != RESET){
+		USART_ReceiverHandler(UART5);
 	}
 
 }
