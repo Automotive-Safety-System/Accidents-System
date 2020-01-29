@@ -7,6 +7,8 @@
 /* Private macro */
 /* Private variables */
 /* Private function prototypes */
+void uart3_init();
+void uart2_init();
 /* Private functions */
 
 /**
@@ -26,15 +28,7 @@ void  vRedLedControllerTask(void *pvParameters)
 	}
 }
 
-int main(void)
-{
-	xTaskCreate(vRedLedControllerTask,
-								 "Red Led Controller",
-									100,
-									NULL,
-									1,
-									NULL
-									);
+int main(void){
 
   int i = 0;
 
@@ -56,18 +50,18 @@ int main(void)
   STM_EVAL_LEDInit(LED5);
   STM_EVAL_LEDInit(LED6);
 
-  vTaskStartScheduler();
+
+
   /* Infinite loop */
-  while (1)
-  {
+  while (1){
+
 	i++;
   }
 }
 
 
 
-void vApplicationMallocFailedHook( void )
-{
+void vApplicationMallocFailedHook( void ){
 	/* The malloc failed hook is enabled by setting
 	configUSE_MALLOC_FAILED_HOOK to 1 in FreeRTOSConfig.h.
 
@@ -79,8 +73,7 @@ void vApplicationMallocFailedHook( void )
 	for( ;; );
 }
 
-void vApplicationStackOverflowHook( xTaskHandle pxTask, signed char *pcTaskName )
-{
+void vApplicationStackOverflowHook( xTaskHandle pxTask, signed char *pcTaskName ){
 	( void ) pcTaskName;
 	( void ) pxTask;
 

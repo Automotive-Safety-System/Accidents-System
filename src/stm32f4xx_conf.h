@@ -39,6 +39,7 @@
 #include "stm32f4xx_usart.h"
 #include "misc.h" /* High level functions for NVIC and SysTick (add-on to CMSIS functions) */
 #include "tm_stm32_buffer.h"
+#include "tm_stm32_gps.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
