@@ -29,6 +29,8 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_it.h"
+#include "stm32f4_discovery.h"
+
 
 /** @addtogroup Template_Project
   * @{
@@ -128,6 +130,7 @@ void USART2_IRQHandler(void){
 
 }
 void USART3_IRQHandler(void){
+
 
 	if (USART_GetFlagStatus(USART3, USART_FLAG_TC) != RESET){
 		USART_ClearITPendingBit(USART3, USART_IT_TC);

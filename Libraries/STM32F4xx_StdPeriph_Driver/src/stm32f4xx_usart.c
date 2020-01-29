@@ -599,9 +599,9 @@ void USART_SendString(USART_TypeDef* USARTx, char *Data, int32_t length){
 				  }
 			  /* Transmit Data */
 			  USARTx->DR = (Data[i] & (uint16_t)0x01FF);
-
+			  i++;
 			  }
-			i++;
+
 
 	  }
 
@@ -660,7 +660,8 @@ void USART_SetCustomStringEndCharacter(USART_TypeDef* USARTx, uint8_t Character)
 }
 
 uint8_t USART_BufferEmpty(USART_TypeDef* USARTx) {
-	return TM_BUFFER_GetFull(USARTx) == 0;
+
+	return TM_BUFFER_GetFull(&USART2_buff_obj) == 0;
 }
 /**
   * @brief  Returns the most recent received data by the USARTx peripheral.

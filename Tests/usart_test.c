@@ -12,8 +12,8 @@ void uart3_init(){
 	  gpio_init_struct.GPIO_OType = GPIO_OType_PP;
 	  gpio_init_struct.GPIO_PuPd = GPIO_PuPd_UP ;
 	  GPIO_Init(GPIOA, &gpio_init_struct);
-	  GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, GPIO_AF_USART3);
-	  GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, GPIO_AF_USART3);
+	  GPIO_PinAFConfig(GPIOB, GPIO_PinSource10, GPIO_AF_USART3);
+	  GPIO_PinAFConfig(GPIOB, GPIO_PinSource11, GPIO_AF_USART3);
 
 	  /*configure NVIC*/
 	    NVIC_InitTypeDef usart3_irq_struct;
