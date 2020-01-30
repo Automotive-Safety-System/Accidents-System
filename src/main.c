@@ -1,9 +1,10 @@
 /* Includes */
 #include "stm32f4xx.h"
 #include "stm32f4_discovery.h"
-
+#include "gsm_module.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "tm_stm32_buffer.h"
 /* Private macro */
 /* Private variables */
 /* Private function prototypes */
@@ -30,32 +31,27 @@ void  vRedLedControllerTask(void *pvParameters)
 
 int main(void){
 
-  int i = 0;
-
-  /**
-  *  IMPORTANT NOTE!
-  *  The symbol VECT_TAB_SRAM needs to be defined when building the project
-  *  if code has been located to RAM and interrupts are used.
-  *  Otherwise the interrupt table located in flash will be used.
-  *  See also the <system_*.c> file and how the SystemInit() function updates
-  *  SCB->VTOR register.
-  *  E.g.  SCB->VTOR = 0x20000000;
-  */
-
-  /* TODO - Add your application code here */
-
-  /* Initialize LEDs */
-  STM_EVAL_LEDInit(LED3);
-  STM_EVAL_LEDInit(LED4);
-  STM_EVAL_LEDInit(LED5);
-  STM_EVAL_LEDInit(LED6);
+	usart2_init();
 
 
+	/* if event has occur */
 
-  /* Infinite loop */
+	// telephone number
+
+	char x[]="87564544534";
+
+//	send_command_to_init_gsm();
+
+	//send telephone number
+
+	send_sms(x);
+
+	// send telephone number
+
+	//gsm_call(x);
+/* Infinite loop */
   while (1){
 
-	i++;
   }
 }
 
