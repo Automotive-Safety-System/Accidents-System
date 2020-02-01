@@ -5,20 +5,16 @@
  *      Author: A
  */
 
-#include "gsm_module.h"
-
+#include "GSM.h"
+#include "GSM_config.h"
 
 void usart2_init(){
 
 
-	      /*enable clock for gpio port A and usart2 */
+	      /*enable clock for GSM gpio and usart */
 
-		  /* insert the following code inside main(), before the infinite loop*/
-
-		  /*enable clock for gpio port A and usart2 */
-
-		  RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
-		  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
+		  RCC_APB1PeriphClockCmd(GSM_USART_RCC, ENABLE);
+		  RCC_AHB1PeriphClockCmd(GSM_GPIO_RCC, ENABLE);
 
 		  GPIO_InitTypeDef 	gpio_init_struct;
 
@@ -26,17 +22,17 @@ void usart2_init(){
 
 		  memset(&gpio_init_struct,0,sizeof(gpio_init_struct));
 
-		  /*configure usart2 rx"PA3" as a floating input*/
-		  gpio_init_struct.GPIO_Pin = GPIO_Pin_2|GPIO_Pin_3;
+		  /*configure usart rx and tx*/
+		  gpio_init_struct.GPIO_Pin = GSM_TX_PIN|GSM_RX_PIN;
 		  gpio_init_struct.GPIO_Mode = GPIO_Mode_AF;
 		  gpio_init_struct.GPIO_Speed = GPIO_Speed_50MHz;
 		  gpio_init_struct.GPIO_OType = GPIO_OType_PP;
 		  gpio_init_struct.GPIO_PuPd = GPIO_PuPd_UP ;
 
-		  GPIO_Init(GPIOA, &gpio_init_struct);
+		  GPIO_Init(GSM_GPIO, &gpio_init_struct);
 
-		  GPIO_PinAFConfig(GPIOA, GPIO_PinSource3, GPIO_AF_USART2);
-		  GPIO_PinAFConfig(GPIOA, GPIO_PinSource2, GPIO_AF_USART2);
+		  GPIO_PinAFConfig(GSM_GPIO, GSM_AF_PIN2_SOURCE, GSM_AF_USART);
+		  GPIO_PinAFConfig(GSM_GPIO, GSM_AF_PIN1_SOURCE, GSM_AF_USART);
 
 	      /*configure NVIC*/
 	      NVIC_InitTypeDef usart2_irq_struct;
@@ -45,35 +41,35 @@ void usart2_init(){
 
 		  memset(&usart2_irq_struct,0,sizeof(usart2_irq_struct));
 
-	      usart2_irq_struct.NVIC_IRQChannel = USART2_IRQn;
+	      usart2_irq_struct.NVIC_IRQChannel = GSM_USART_IRQ;
 		  usart2_irq_struct.NVIC_IRQChannelCmd = ENABLE;
-		  usart2_irq_struct.NVIC_IRQChannelPreemptionPriority = 0;
-		  usart2_irq_struct.NVIC_IRQChannelSubPriority = 10;
+		  usart2_irq_struct.NVIC_IRQChannelPreemptionPriority = GSM_USART_IRQ_PERIORITY;
+		  usart2_irq_struct.NVIC_IRQChannelSubPriority = GSM_USART_IRQ_PERIORITY;
 
 	      NVIC_Init(&usart2_irq_struct);
 
-	     /*configure usart2*/
+	     /*configure usart*/
 
-	    USART_InitTypeDef 	usart2_init_struct;
+	    USART_InitTypeDef 	usart_init_struct;
 
 	    /* set all gpio as 0 */
 
-	    memset(&usart2_init_struct,0,sizeof(usart2_init_struct));
+	    memset(&usart_init_struct,0,sizeof(usart_init_struct));
 
-	    usart2_init_struct.USART_BaudRate = 9600;
-	    usart2_init_struct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-	    usart2_init_struct.USART_Mode = USART_Mode_Tx|USART_Mode_Rx;
-	    usart2_init_struct.USART_Parity = USART_Parity_No;
-	    usart2_init_struct.USART_StopBits = USART_StopBits_1;
-	    usart2_init_struct.USART_WordLength = USART_WordLength_8b;
+	    usart_init_struct.USART_BaudRate = GSM_BAUD_RATE;
+	    usart_init_struct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	    usart_init_struct.USART_Mode = USART_Mode_Tx|USART_Mode_Rx;
+	    usart_init_struct.USART_Parity = USART_Parity_No;
+	    usart_init_struct.USART_StopBits = USART_StopBits_1;
+	    usart_init_struct.USART_WordLength = USART_WordLength_8b;
 
-	    USART_Init(USART2, &usart2_init_struct);
+	    USART_Init(GSM_USART, &usart_init_struct);
 
-	    USART2->CR1 |=(1<<6);
+	    GSM_USART->CR1 |=(1<<6);
 
-		USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
+		USART_ITConfig(GSM_USART, USART_IT_RXNE, ENABLE);
 
-	    USART_Cmd(USART2, ENABLE);
+	    USART_Cmd(GSM_USART, ENABLE);
 
 
 }
@@ -145,7 +141,7 @@ void SIM900_PutFrame(char* buf) {
 
           for(int i = 0; i < len; i++) {
 
-	         USART_SendData(USART2,buf[i]);
+	         USART_SendData(GSM_USART, buf[i]);
           }
 
 }
@@ -156,7 +152,7 @@ uint8_t SIM900_GetFrame(uint8_t* buf, uint8_t len) {
 
 
 
-	   uint8_t size = USART_ReceiveString(USART2,buf,len);
+	   uint8_t size = USART_ReceiveString(GSM_USART,buf,len);
 
 	   if(size <= 0){
 

@@ -5,15 +5,15 @@
  *      Author: A
  */
 
-#ifndef HAL_GSM_MODULE_H_
-#define HAL_GSM_MODULE_H_
+#ifndef HAL_GSM_H_
+#define HAL_GSM_H_
 
 /* macro definition
  *
  * AT commands
  */
 
-#define SIM900_HAL_Enable   usart2_init
+
 
 #define  test_connect     "AT"                            //Once the handshake test is successful, it will back to OK
 
