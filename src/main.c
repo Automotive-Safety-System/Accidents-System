@@ -1,10 +1,7 @@
 /* Includes */
 #include "stm32f4xx.h"
 #include "stm32f4_discovery.h"
-#include "gsm_module.h"
-#include "FreeRTOS.h"
-#include "task.h"
-#include "tm_stm32_buffer.h"
+
 /* Private macro */
 /* Private variables */
 /* Private function prototypes */

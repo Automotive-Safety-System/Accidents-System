@@ -30,6 +30,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_it.h"
 #include "stm32f4_discovery.h"
+#include "MPU_0.h"
 
 
 /** @addtogroup Template_Project
@@ -161,6 +162,16 @@ void USART5_IRQHandler(void){
 		USART_ReceiverHandler(UART5);
 	}
 
+}
+
+void I2C1_EV_IRQHandler(void)
+{
+
+	//HAL_I2C_EV_IRQHandler(&i2c_handle);
+}
+void I2C1_ER_IRQHandler(void)
+{
+	//HAL_I2C_ER_IRQHandler(&i2c_handle );
 }
 /**
   * @brief  This function handles PPP interrupt request.
