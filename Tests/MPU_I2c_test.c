@@ -44,9 +44,7 @@ SOFTWARE.
 **
 **===========================================================================
 */
-int main(void)
-{
-  int i = 0;
+
 
   /**
   *  IMPORTANT NOTE!
@@ -57,6 +55,8 @@ int main(void)
   *  SCB->VTOR register.  
   *  E.g.  SCB->VTOR = 0x20000000;  
   */
+
+ /* write the following code in main to receive data*/
 
   /* TODO - Add your application code here */
 
@@ -89,13 +89,6 @@ int main(void)
 	  	  STM_EVAL_LEDOn(LED6);
 	  }
 
-  /* Infinite loop */
-  while (1)
-  {
-
-	i++;
-  }
-}
 
 
 /*
