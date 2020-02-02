@@ -43,6 +43,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "stm32f4xx_i2c.h"
+#include "MPU_0.h"
 
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
