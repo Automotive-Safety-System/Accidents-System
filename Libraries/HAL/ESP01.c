@@ -133,7 +133,7 @@ uint8_t ESP_readData(char* user_buffer, char delimeter){
 
 uint8_t ESP_connectAccessPoint(char* ssid, char* password){
 	char command[100] = {'\0'};
-	sprintf(command, "AT+CWJAP=\"%s\",\"%s\"", ssid, password);
+	sprintf(command, "AT+CWJAP=\"%s\",\"%s\"%s", ssid, password, "\r\n");
 	return ESP_sendRequest(command, "WIFI CONNECTED");
 
 	//TODO
@@ -157,7 +157,7 @@ uint8_t ESP_connectAccessPoint(char* ssid, char* password){
 uint8_t ESP_WIFIMode(uint8_t mode){
 
 	char command[20]={'\0'};
-	sprintf(command, "AT+CWMODE=%d", mode);
+	sprintf(command, "AT+CWMODE=%d%s", mode,"\r\n");
 	return ESP_sendRequest(command, "OK");
 
 }
