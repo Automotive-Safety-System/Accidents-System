@@ -394,8 +394,10 @@ void USART_OneBitMethodCmd(USART_TypeDef* USARTx, FunctionalState NewState);
 void USART_SendData(USART_TypeDef* USARTx, uint16_t Data);
 void USART_SendString(USART_TypeDef* USARTx, char *Data, int32_t length);
 void USART_ReceiverHandler(USART_TypeDef* USARTx);
+void USART_sendHandler(USART_TypeDef* USARTx);
 void USART_SetCustomStringEndCharacter(USART_TypeDef* USARTx, uint8_t Character);
 uint8_t USART_BufferEmpty(USART_TypeDef* USARTx);
+uint8_t USART_sendBufferEmpty(USART_TypeDef* USARTx);
 uint8_t USART_ReceiveData(USART_TypeDef* USARTx);
 uint16_t USART_ReceiveString(USART_TypeDef* USARTx, char* user_buffer, uint16_t buffsize);
 

@@ -130,6 +130,22 @@
   uint8_t USART6_Buffer[USART6_BUFFER_SIZE];
   uint8_t USART7_Buffer[USART7_BUFFER_SIZE];
 
+  uint8_t USART1_sendBuffer[USART1_BUFFER_SIZE];
+  uint8_t USART2_sendBuffer[USART2_BUFFER_SIZE];
+  uint8_t USART3_sendBuffer[USART3_BUFFER_SIZE];
+  uint8_t USART4_sendBuffer[USART4_BUFFER_SIZE];
+  uint8_t USART5_sendBuffer[USART5_BUFFER_SIZE];
+  uint8_t USART6_sendBuffer[USART6_BUFFER_SIZE];
+  uint8_t USART7_sendBuffer[USART7_BUFFER_SIZE];
+
+  TM_BUFFER_t USART1_send_buff_obj = {USART1_BUFFER_SIZE, 0, 0, USART1_sendBuffer, 0, USART_STRING_DELIMITER};
+  TM_BUFFER_t USART2_send_buff_obj = {USART2_BUFFER_SIZE, 0, 0, USART2_sendBuffer, 0, USART_STRING_DELIMITER};
+  TM_BUFFER_t USART3_send_buff_obj = {USART3_BUFFER_SIZE, 0, 0, USART3_sendBuffer, 0, USART_STRING_DELIMITER};
+  TM_BUFFER_t USART4_send_buff_obj = {USART4_BUFFER_SIZE, 0, 0, USART4_sendBuffer, 0, USART_STRING_DELIMITER};
+  TM_BUFFER_t USART5_send_buff_obj = {USART5_BUFFER_SIZE, 0, 0, USART5_sendBuffer, 0, USART_STRING_DELIMITER};
+  TM_BUFFER_t USART6_send_buff_obj = {USART6_BUFFER_SIZE, 0, 0, USART6_sendBuffer, 0, USART_STRING_DELIMITER};
+  TM_BUFFER_t USART7_send_buff_obj = {USART7_BUFFER_SIZE, 0, 0, USART7_sendBuffer, 0, USART_STRING_DELIMITER};
+
   TM_BUFFER_t USART1_buff_obj = {USART1_BUFFER_SIZE, 0, 0, USART1_Buffer, 0, USART_STRING_DELIMITER};
   TM_BUFFER_t USART2_buff_obj = {USART2_BUFFER_SIZE, 0, 0, USART2_Buffer, 0, USART_STRING_DELIMITER};
   TM_BUFFER_t USART3_buff_obj = {USART3_BUFFER_SIZE, 0, 0, USART3_Buffer, 0, USART_STRING_DELIMITER};
@@ -586,36 +602,75 @@ void USART_SendData(USART_TypeDef* USARTx, uint16_t Data)
 }
 
 void USART_SendString(USART_TypeDef* USARTx, char *Data, int32_t length){
-	uint32_t i = 0;
+	uint32_t i = 1;
 	/* Check the parameters */
 	  assert_param(IS_USART_ALL_PERIPH(USARTx));
 	  assert_param(IS_USART_DATA(Data));
 	  if (length == -1 ){
 
 		  while (Data[i] != '\0'){
-			  if (USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET)
+			/*  if (USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET)
 				  while(USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET){
 					  //wait the buffer to be empty
 				  }
-			  /* Transmit Data */
-			  USARTx->DR = (Data[i] & (uint16_t)0x01FF);
+			  // Transmit Data
+			  USARTx->DR = (Data[i] & (uint16_t)0x01FF); */
+				if (USARTx == USART1)
+					TM_BUFFER_Write(&USART1_send_buff_obj, &Data[i], 1);
+				else if (USARTx == USART2)
+					TM_BUFFER_Write(&USART2_send_buff_obj, &Data[i], 1);
+				else if (USARTx == USART3)
+					TM_BUFFER_Write(&USART3_send_buff_obj, &Data[i], 1);
+				else if (USARTx == UART4)
+					TM_BUFFER_Write(&USART4_send_buff_obj, &Data[i], 1);
+				else if (USARTx == UART5)
+					TM_BUFFER_Write(&USART5_send_buff_obj, &Data[i], 1);
+				else if (USARTx == USART6)
+					TM_BUFFER_Write(&USART6_send_buff_obj, &Data[i], 1);
+				else if (USARTx == UART7)
+					TM_BUFFER_Write(&USART7_send_buff_obj, &Data[i], 1);
+
 			  i++;
 			  }
 
+		  if (USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET)
+				  while(USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET){
+					  //wait the buffer to be empty
+				  }
+			  // Transmit the first char then interrupts handles the rest of the string from the buffer
+			  USARTx->DR = (Data[0] & (uint16_t)0x01FF);
 
 	  }
 
 	  else{
-	  for (i= 0; i<length; i++){
-	  if (USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET)
-		  while(USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET){
-			  //wait the buffer to be empty
-		  }
-	  /* Transmit Data */
-	  USARTx->DR = (Data[i] & (uint16_t)0x01FF);
+	  for (i = 1; i<length; i++){
+
+			if (USARTx == USART1)
+				TM_BUFFER_Write(&USART1_send_buff_obj, &Data[i], 1);
+			else if (USARTx == USART2)
+				TM_BUFFER_Write(&USART2_send_buff_obj, &Data[i], 1);
+			else if (USARTx == USART3)
+				TM_BUFFER_Write(&USART3_send_buff_obj, &Data[i], 1);
+			else if (USARTx == UART4)
+				TM_BUFFER_Write(&USART4_send_buff_obj, &Data[i], 1);
+			else if (USARTx == UART5)
+				TM_BUFFER_Write(&USART5_send_buff_obj, &Data[i], 1);
+			else if (USARTx == USART6)
+				TM_BUFFER_Write(&USART6_send_buff_obj, &Data[i], 1);
+			else if (USARTx == UART7)
+				TM_BUFFER_Write(&USART7_send_buff_obj, &Data[i], 1);
 
 	  }
+
+	  if (USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET)
+			  while(USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET){
+				  //wait the buffer to be empty
+			  }
+		  // Transmit the first char then interrupts handles the rest of the string from the buffer
+		  USARTx->DR = (Data[0] & (uint16_t)0x01FF);
+
 	  }
+
 }
 
 
@@ -641,6 +696,30 @@ void USART_ReceiverHandler(USART_TypeDef* USARTx){
 
 }
 
+void USART_sendHandler(USART_TypeDef* USARTx){
+
+	uint8_t c;
+	TM_BUFFER_t* u;
+	if (USARTx == USART1)
+		u = &USART1_send_buff_obj;
+	else if (USARTx == USART2)
+			u = &USART2_send_buff_obj;
+	else if (USARTx == USART3)
+				u = &USART3_send_buff_obj;
+	else if (USARTx == UART4)
+				u = &USART4_send_buff_obj;
+	else if (USARTx == UART5)
+				u = &USART5_send_buff_obj;
+	else if (USARTx == USART6)
+				u = &USART6_send_buff_obj;
+	else if (USARTx == UART7)
+				u = &USART7_send_buff_obj;
+	/* Read character from buffer */
+	if (TM_BUFFER_Read(u, &c, 1)) {
+		USARTx->DR = (c & (uint16_t)0x01FF);
+	}
+}
+
 void USART_SetCustomStringEndCharacter(USART_TypeDef* USARTx, uint8_t Character) {
 	if (USARTx == USART1)
 		TM_BUFFER_SetStringDelimiter(&USART1_buff_obj, Character);
@@ -660,8 +739,40 @@ void USART_SetCustomStringEndCharacter(USART_TypeDef* USARTx, uint8_t Character)
 }
 
 uint8_t USART_BufferEmpty(USART_TypeDef* USARTx) {
+		if (USARTx == USART1)
+			return TM_BUFFER_GetFull(&USART1_buff_obj) == 0;
+		else if (USARTx == USART2)
+			return TM_BUFFER_GetFull(&USART2_buff_obj) == 0;
+		else if (USARTx == USART3)
+			return TM_BUFFER_GetFull(&USART3_buff_obj) == 0;
+		else if (USARTx == UART4)
+			return TM_BUFFER_GetFull(&USART4_buff_obj) == 0;
+		else if (USARTx == UART5)
+			return TM_BUFFER_GetFull(&USART5_buff_obj) == 0;
+		else if (USARTx == USART6)
+			return TM_BUFFER_GetFull(&USART6_buff_obj) == 0;
+		else if (USARTx == UART7)
+			return TM_BUFFER_GetFull(&USART7_buff_obj) == 0;
 
-	return TM_BUFFER_GetFull(&USART2_buff_obj) == 0;
+
+}
+
+uint8_t USART_sendBufferEmpty(USART_TypeDef* USARTx){
+
+	if (USARTx == USART1)
+		return TM_BUFFER_GetFull(&USART1_send_buff_obj) == 0;
+	else if (USARTx == USART2)
+		return TM_BUFFER_GetFull(&USART2_send_buff_obj) == 0;
+	else if (USARTx == USART3)
+		return TM_BUFFER_GetFull(&USART3_send_buff_obj) == 0;
+	else if (USARTx == UART4)
+		return TM_BUFFER_GetFull(&USART4_send_buff_obj) == 0;
+	else if (USARTx == UART5)
+		return TM_BUFFER_GetFull(&USART5_send_buff_obj) == 0;
+	else if (USARTx == USART6)
+		return TM_BUFFER_GetFull(&USART6_send_buff_obj) == 0;
+	else if (USARTx == UART7)
+		return TM_BUFFER_GetFull(&USART7_send_buff_obj) == 0;
 }
 /**
   * @brief  Returns the most recent received data by the USARTx peripheral.
@@ -697,6 +808,39 @@ uint8_t USART_ReceiveData(USART_TypeDef* USARTx){
 	/* Read was not successful */
 	return 0;
 }
+/*
+void USART_ReceiveDataTask(void * pvParameters){
+  // Check the parameters
+  assert_param(IS_USART_ALL_PERIPH((USART_TypeDef *)pvParameters));
+	uint8_t c;
+	TM_BUFFER_t* u;
+	for(;;){
+	if ((USART_TypeDef *) pvParameters == USART1)
+		u = &USART1_buff_obj;
+	else if ((USART_TypeDef *) pvParameters == USART2)
+			u = &USART2_buff_obj;
+	else if ((USART_TypeDef *) pvParameters == USART3)
+				u = &USART3_buff_obj;
+	else if ((USART_TypeDef *) pvParameters == UART4)
+				u = &USART4_buff_obj;
+	else if ((USART_TypeDef *) pvParameters == UART5)
+				u = &USART5_buff_obj;
+	else if ((USART_TypeDef *) pvParameters == USART6)
+				u = &USART6_buff_obj;
+	else if ((USART_TypeDef *) pvParameters == UART7)
+				u = &USART7_buff_obj;
+	// Read character from buffer
+	if (TM_BUFFER_Read(u, &c, 1)) {
+		//TODO : share data to other tasks that might need it and remove returns
+		return c;
+	}
+
+	// Read was not successful
+	return 0;
+	}
+}
+
+*/
 
 
 uint16_t USART_ReceiveString(USART_TypeDef* USARTx, char* user_buffer, uint16_t buffsize){
