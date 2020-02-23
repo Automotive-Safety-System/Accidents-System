@@ -116,6 +116,18 @@
 /* Maximal number of satellites in view */
 #define GPS_MAX_SATS_IN_VIEW    24
 
+/*********************************************************************/
+/* global variables to be used by tasks */
+
+  float temp;
+  TM_GPS_t GPS_Data;
+  TM_GPS_Result_t result;
+  TM_GPS_Result_t current;
+  TM_GPS_Float_t GPS_Float;
+  TM_GPS_Distance_t GPS_Distance;
+
+
+/********************************************************************/
 /* Internal variables */
 static char GPS_Term[15];
 static uint8_t GPS_Term_Number;
@@ -153,6 +165,41 @@ void GPS_USART_INIT(USART_TypeDef* USARTx);
 #define TM_GPS_INT_SetFlag(flag)                         (GPS_Flags |= (flag))
 
 /* Public */
+void GPS_update_task(void * pvParameters){
+
+	for(;;){
+
+	  result = TM_GPS_Update(&GPS_Data);
+
+	  if ( result == TM_GPS_Result_FirstDataWaiting){
+
+	  }
+	  else if (result == TM_GPS_Result_NewData) {
+	  			/* We received new packet of useful data from GPS */
+		  	  current = TM_GPS_Result_NewData;
+	  			if (GPS_Data.Validity){
+
+	  			}
+	  			else {
+	  							/* GPS signal is not valid */
+
+	  						}
+	  }
+
+	  else if (result == TM_GPS_Result_FirstDataWaiting && current != TM_GPS_Result_FirstDataWaiting) {
+	  			current = TM_GPS_Result_FirstDataWaiting;
+	  		}
+	  else if (result == TM_GPS_Result_OldData && current != TM_GPS_Result_OldData) {
+	  			current = TM_GPS_Result_OldData;
+	  			/* We already read data, nothing new was received from GPS */
+	  		}
+
+	  vTaskDelay(pdMS_TO_TICKS(5));
+	}
+}
+
+
+
 void TM_GPS_Init(TM_GPS_t* GPS_Data, uint32_t baudrate) {
 	/* Initialize USART */
 	GPS_USART_INIT(GPS_USART);
