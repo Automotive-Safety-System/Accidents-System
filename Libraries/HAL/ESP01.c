@@ -121,7 +121,8 @@ uint8_t ESP_sendRequest(char *command, char *expected_response){
 
 // TODO : convert the following to a task
 uint8_t ESP_readData(char* user_buffer, char delimeter){
-
+//add flag to check first if we expect data
+//read data after the form  +IPD, length:data_here
 	uint32_t i = 0;
 	while (!USART_BufferEmpty(ESP_USART)){
 			user_buffer[i] = USART_ReceiveData(ESP_USART);
@@ -155,10 +156,48 @@ uint8_t ESP_connectAccessPoint(char* ssid, char* password){
 }
 
 uint8_t ESP_WIFIMode(uint8_t mode){
-
+	//mode = 1 for station
 	char command[20]={'\0'};
 	sprintf(command, "AT+CWMODE=%d%s", mode,"\r\n");
 	return ESP_sendRequest(command, "OK");
 
 }
 
+uint8_t ESP_ConnectionMode(uint8_t mode){
+// mode = 0 if single connection
+	char command[20]={'\0'};
+	sprintf(command, "AT+CIPMUX=%d%s", mode,"\r\n");
+	return ESP_sendRequest(command, "OK");
+
+}
+
+uint8_t ESP_ApplicationMode(uint8_t mode){
+// mode = 0 if non transparent mode
+	char command[20]={'\0'};
+	sprintf(command, "AT+CIPMODE=%d%s", mode,"\r\n");
+	return ESP_sendRequest(command, "OK");
+
+}
+
+
+uint8_t ESP_StartTCP(char* Domain, char* Port){
+	uint8_t startResponse;
+	char command[60]={'\0'};
+
+	sprintf(command, "AT+CIPSTART=\"TCP\",\"%s\",%s%s", Domain, Port, "\r\n");
+
+	startResponse = ESP_sendRequest(command, "CONNECT");
+	return startResponse;
+}
+
+uint8_t ESP_SendData(uint32_t length, char* data){
+
+	char command[20]={'\0'};
+	sprintf(command, "AT+CIPSEND=%lu%s", length,"\r\n");
+	ESP_sendBlindCommand(command);
+	if (ESP_sendRequest("AT+CIPSTATUS", "STATUS:3") == 1){
+		ESP_sendBlindCommand(data);
+	}
+
+	return 1;
+}

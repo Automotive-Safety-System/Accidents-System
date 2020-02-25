@@ -29,4 +29,8 @@ uint8_t ESP_sendBlindCommand(char* command);
 uint8_t ESP_sendRequest(char *command, char *expected_response);
 uint8_t ESP_readData(char* user_buffer, char delimeter);
 uint8_t ESP_WIFIMode(uint8_t mode);
+uint8_t ESP_ConnectionMode(uint8_t mode);
+uint8_t ESP_ApplicationMode(uint8_t mode);
+uint8_t ESP_StartTCP(char* Domain, char* Port);
+uint8_t ESP_SendData(uint32_t length, char* data);
 #endif /* HAL_ESP01_H_ */

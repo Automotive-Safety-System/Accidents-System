@@ -23,4 +23,10 @@
 #define ESP_USART_IRQ_PERIORITY		10
 #define ESP_BAUD_RATE				115200
 
+
+#define DOMAIN 						"CLOUD_DOMAIN_HERE"
+#define PORT						"PORT_NUMBER_HERE"
+#define SSID						"WIFI_SSID_HERE"
+#define PASS						"WIFI_PASSWORD_HERE"
+
 #endif /* HAL_ESP01_CONFIG_H_ */
