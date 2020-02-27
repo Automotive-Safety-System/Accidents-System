@@ -87,7 +87,9 @@ int main(void){
 //	  TM_GPS_Init(&GPS_Data, 9600);
 //	  OS_INIT();
 //	  vTaskStartScheduler();
-gsm_os_init();
+
+       gsm_os_init();
+
 /* Infinite loop */
   while (1){
 	 // USART_SendString(USART2, ssid,6);

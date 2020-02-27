@@ -118,23 +118,23 @@ void DebugMon_Handler(void)
 /*  available peripheral interrupt handler's name please refer to the startup */
 /*  file (startup_stm32f40xx.s/startup_stm32f427x.s).                         */
 /******************************************************************************/
-//void USART2_IRQHandler(void){
-//
-//	if (USART_GetFlagStatus(USART2, USART_FLAG_TC) != RESET){
-//		if (USART_sendBufferEmpty(USART2))
-//			USART_ClearITPendingBit(USART2, USART_IT_TC);
-//
-//		else if (!USART_sendBufferEmpty(USART2)){
-//			USART_ClearITPendingBit(USART2, USART_IT_TC);
-//			USART_sendHandler(USART2);
-//		}
-//	}
-//
-//	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET){
-//		USART_ReceiverHandler(USART2);
-//	}
-//
-//}
+void USART2_IRQHandler(void){
+
+	if (USART_GetFlagStatus(USART2, USART_FLAG_TC) != RESET){
+		if (USART_sendBufferEmpty(USART2))
+			USART_ClearITPendingBit(USART2, USART_IT_TC);
+
+		else if (!USART_sendBufferEmpty(USART2)){
+			USART_ClearITPendingBit(USART2, USART_IT_TC);
+			USART_sendHandler(USART2);
+		}
+	}
+
+	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET){
+		USART_ReceiverHandler(USART2);
+	}
+
+}
 void USART3_IRQHandler(void){
 
 

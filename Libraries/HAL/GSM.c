@@ -453,43 +453,43 @@ void send_sms(void *num){
  *
  */
 
-void USART2_IRQHandler(void){
-
-	char ch;
-
-	BaseType_t xHigherPriorityTaskWoken;
-
-    /* We have not woken a task at the start of the ISR. */
-
-    xHigherPriorityTaskWoken = pdFALSE;
-
-	if (USART_GetFlagStatus(USART2, USART_FLAG_TC) != RESET){
-
-		USART_ClearITPendingBit(USART2, USART_IT_TC);
-
-	}
-
-	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET){
-
-		USART_ClearITPendingBit(USART2,USART_IT_RXNE);
-
-        ch = USART_ReceiveData(USART2);
-
-        if( ch == 'O'){
-
-        	xQueueSendFromISR(queue1,&ch,portMAX_DELAY);
-        }
-
-        if(ch == 'K'){
-
-        	xQueueSendFromISR(queue1,&ch,portMAX_DELAY);
-        }
-
-
-
-}
-
-}
+//void USART2_IRQHandler(void){
+//
+//	char ch;
+//
+//	BaseType_t xHigherPriorityTaskWoken;
+//
+//    /* We have not woken a task at the start of the ISR. */
+//
+//    xHigherPriorityTaskWoken = pdFALSE;
+//
+//	if (USART_GetFlagStatus(USART2, USART_FLAG_TC) != RESET){
+//
+//		USART_ClearITPendingBit(USART2, USART_IT_TC);
+//
+//	}
+//
+//	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET){
+//
+//		USART_ClearITPendingBit(USART2,USART_IT_RXNE);
+//
+//        ch = USART_ReceiveData(USART2);
+//
+//        if( ch == 'O'){
+//
+//        	xQueueSendFromISR(queue1,&ch,portMAX_DELAY);
+//        }
+//
+//        if(ch == 'K'){
+//
+//        	xQueueSendFromISR(queue1,&ch,portMAX_DELAY);
+//        }
+//
+//
+//
+//}
+//
+//}
 /*
  * function to  deal with interrupt
  *

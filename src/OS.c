@@ -9,7 +9,7 @@
 #include "GSM.h"
 /*create all tasks here*/
 
-extern TaskHandle_t handle_gsm_os_init ;
+
 
 void OS_INIT(void){
 OS_INIT();
@@ -21,12 +21,7 @@ OS_INIT();
 				5,
 				NULL);
 
-//	xTaskCreate(gsm_os_init,
-//					"gsm_os_init",
-//					200,
-//					NULL,
-//					5,
-//					NULL);
+
 
 }
 
