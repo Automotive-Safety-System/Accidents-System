@@ -28,7 +28,7 @@ void  vRedLedControllerTask(void *pvParameters)
 
 int main(void){
 	STM_EVAL_LEDInit(LED3);
-hhhhhggggfg
+
 
     int i;
 	char ssid[] = "Hazem";
