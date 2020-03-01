@@ -24,7 +24,7 @@
 
 void usart2_init();
 
-void send_command_to_init_gsm();
+void send_command_to_init_gsm(void *parameter);
 
 void SIM900_PutFrame(char *buf);
 
@@ -34,9 +34,7 @@ void gsm_call(void *num);
 
 void send_sms(void *num);
 
-void task_test_event();
-
-void gsm_os_init();
+void gsm_os_init(void *parameter);
 
 
 #endif /* HAL_GSM_INIT_H_ */

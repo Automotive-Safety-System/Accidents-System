@@ -10,9 +10,11 @@
 /*create all tasks here*/
 
 
+extern TaskHandle_t handle_gsm_os_init;
+
 
 void OS_INIT(void){
-OS_INIT();
+
 
 	xTaskCreate(GPS_update_task,
 				"gps_update",
@@ -20,6 +22,14 @@ OS_INIT();
 				NULL,
 				5,
 				NULL);
+
+	xTaskCreate(gsm_os_init,
+					"gsm_os_init",
+					200,
+					NULL,
+					5,
+					&handle_gsm_os_init);
+
 
 
 

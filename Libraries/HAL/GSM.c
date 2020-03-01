@@ -139,52 +139,73 @@ void usart2_init(){
 			USART_Cmd(USART2,ENABLE);
 
 
+			printf("exit from usart2\n");
 
 
 }
 
-void gsm_os_init(){
-
-char *m ="01028519757;\r\n";
-
-STM_EVAL_LEDInit(LED3);
-
-STM_EVAL_LEDInit(LED4);
-
-usart2_init();
-
-queue1 = xQueueCreate(10,sizeof(char));
-
-sem1 = xSemaphoreCreateMutex();
-
-if(queue1 != NULL
-		&& sem1 != NULL){
+/*
+ *
+ * this function is used to init gsm
+ *
+ * and create task
+ *
+ * and create usart init and
+ *
+ * create event which happen to send message
+ *
+ *
+ */
 
 
-	                 //lets create task-2
-
-         			 xTaskCreate(send_command_to_init_gsm,"send_command_to_init_gsm",128,NULL,1,&handle_send_command_to_init_gsm);
-
-         			 xTaskCreate(gsm_call,"gsm_call",128,(void *)m,1,&handle_gsm_call);
-
-         			 xTaskCreate(send_sms,"send_sms",128,NULL,1,&handle_send_sms);
+void gsm_os_init(void *parameter){
 
 
-         			 printf("task has complete\n");
+	       printf("inside gsm first\n");
 
-				     vTaskStartScheduler();
+			char *m ="01028519757;\r\n";
+
+			usart2_init();
+
+
+			// create semphore to shared data
+
+			queue1 = xQueueCreate(10,sizeof(char));
+
+			sem1 = xSemaphoreCreateMutex();
+
+
+			 //lets create task-2
+
+
+			// first task to send command to init gsm
+
+			 xTaskCreate(send_command_to_init_gsm,"send_command_to_init_gsm",128,NULL,5,&handle_send_command_to_init_gsm);
+
+			 //second task to call someone using gsm at commands
+
+	         xTaskCreate(gsm_call,"gsm_call",128,(void *)m,5,&handle_gsm_call);
+
+	         //third task to send sms to anyone
+
+			 xTaskCreate(send_sms,"send_sms",128,NULL,5,&handle_send_sms);
 
 
 
+	while(1){
 
+
+		  printf("exit gsm first\n");
+
+
+		  //delete this task this is not used
+
+		  vTaskDelete(handle_gsm_os_init);
+
+
+	}
 
 }
-
-
-
-
-}
-
 
 /*
  * function to init gsm
@@ -196,13 +217,16 @@ if(queue1 != NULL
  *
  */
 
-void send_command_to_init_gsm(){
+void send_command_to_init_gsm(void *parameter){
+
+
+	printf("first task_send command to init gsm \n");
 
 
 	           uint32_t current_notification_value=0;
 
 	           /* to change priority */
-	       	  UBaseType_t p1,p2;
+	       	  UBaseType_t p1;
 
 	         while(1){
 
@@ -275,7 +299,7 @@ void send_command_to_init_gsm(){
  *
  */
 
-void SIM900_PutFrame(char *buf) {
+ void SIM900_PutFrame(char *buf) {
 
 
            xSemaphoreTake(sem1,portMAX_DELAY);
@@ -306,28 +330,6 @@ void SIM900_PutFrame(char *buf) {
  */
 
 
-uint8_t SIM900_GetFrame(void* buf, void *len){
-
-
-
-	   uint8_t size = USART_ReceiveString(USART2,(uint8_t *)buf, *((uint8_t *)len));
-
-	   if(size <= 0){
-
-		   printf("error no data in buffer\n");
-		   return 0;
-	   }
-
-	   else{
-
-
-		   return size ;
-
-	   }
-
-	return size;
-}
-
 /*
  * function to send command  from gsm
  *
@@ -337,6 +339,9 @@ uint8_t SIM900_GetFrame(void* buf, void *len){
 
 
 void gsm_call(void *num){
+
+	printf("second task to call gsm \n");
+
 
 	   uint32_t current_notification_value=0;
 
@@ -380,6 +385,9 @@ void gsm_call(void *num){
 
 void send_sms(void *num){
 
+
+
+
 	     unsigned char caller_id[20] = "01028519757";                        // will contain  the phone number +33612345678
 	     unsigned char sms_header[30] = {0};
 
@@ -398,6 +406,8 @@ void send_sms(void *num){
 
 
 	while(1){
+
+
 		if ( xTaskNotifyWait(0,0,&current_notification_value,portMAX_DELAY) == pdTRUE ){
 
 
@@ -424,7 +434,7 @@ void send_sms(void *num){
 
 			vTaskDelay(pdMS_TO_TICKS(2000));
 
-        	SIM900_PutFrame("hello from gsm\x1a");
+        	SIM900_PutFrame("اHI HAZEM TEAM LEADER OF ACCIDENT SYSTEM \x1a");
 
 			vTaskDelay(pdMS_TO_TICKS(20000));
 
@@ -447,50 +457,6 @@ void send_sms(void *num){
 
 
 /*
- * function to  know when event
- *
- * has occured
- *
- */
-
-//void USART2_IRQHandler(void){
-//
-//	char ch;
-//
-//	BaseType_t xHigherPriorityTaskWoken;
-//
-//    /* We have not woken a task at the start of the ISR. */
-//
-//    xHigherPriorityTaskWoken = pdFALSE;
-//
-//	if (USART_GetFlagStatus(USART2, USART_FLAG_TC) != RESET){
-//
-//		USART_ClearITPendingBit(USART2, USART_IT_TC);
-//
-//	}
-//
-//	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET){
-//
-//		USART_ClearITPendingBit(USART2,USART_IT_RXNE);
-//
-//        ch = USART_ReceiveData(USART2);
-//
-//        if( ch == 'O'){
-//
-//        	xQueueSendFromISR(queue1,&ch,portMAX_DELAY);
-//        }
-//
-//        if(ch == 'K'){
-//
-//        	xQueueSendFromISR(queue1,&ch,portMAX_DELAY);
-//        }
-//
-//
-//
-//}
-//
-//}
-/*
  * function to  deal with interrupt
  *
  * has occured
@@ -500,6 +466,7 @@ void send_sms(void *num){
 
 void EXTI0_IRQHandler(void)
 {
+
 
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
@@ -521,7 +488,7 @@ void EXTI0_IRQHandler(void)
 		taskYIELD();
 	}
 
-	STM_EVAL_LEDToggle(LED3);
+
 
 }
 
