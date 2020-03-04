@@ -16,3 +16,9 @@ send_sms(x);
 // send telephone number
 
 gsm_call(x);
+
+
+
+// to turn on gsm module
+
+// call gsm_os_init from main

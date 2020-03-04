@@ -8,218 +8,487 @@
 #include "GSM.h"
 #include "GSM_config.h"
 
+
+/*
+ *
+ * handle of this task
+ */
+
+TaskHandle_t  handle_send_command_to_init_gsm = NULL;
+
+TaskHandle_t  handle_gsm_call = NULL;
+
+TaskHandle_t  handle_send_sms = NULL;
+
+TaskHandle_t handle_gsm_os_init = NULL;
+
+TaskHandle_t task2_h;
+
+QueueHandle_t queue1 = NULL;
+
+SemaphoreHandle_t sem1 = NULL;
+
+/* array definition
+ *
+ * AT commands
+ */
+
+char buffer[10];
+
+uint8_t flag_delay=0,current=0;
+
+#define SIM900_HAL_Enable   usart2_init
+
+char test_connect[] = "AT\r\n";                          // //Once the handshake test is successful, it will back to OK
+
+char quality_test[] = "AT+CSQ\r\n";                      //Signal quality test, value range is 0-31 , 31 is the best
+
+char  sim_info[] = "AT+CCID\n";                       // get the SIM card number  this tests that the SIM card is found OK
+
+char  net_reg[] =  "AT+CREG?\n";                      //Check whether it has registered in the network
+
+char  config_mod[]= "AT+CMGF=1\r\n";                    // Selects SMS message format as text.
+
+char MESSAGE[]="hello from gsm module";
+
+char ctrl_z[]="26";
+
+/*
+ * function to init usart
+ *
+ * use usart2
+ *
+ * this function is called one time to init pheripheral
+ *
+ *
+ */
+
 void usart2_init(){
 
 
-	      /*enable clock for GSM gpio and usart */
+	        GPIO_InitTypeDef gpio_uart_pins;
+			USART_InitTypeDef uart2_init;
 
-		  RCC_APB1PeriphClockCmd(GSM_USART_RCC, ENABLE);
-		  RCC_AHB1PeriphClockCmd(GSM_GPIO_RCC, ENABLE);
+			//1. Enable the UART2  and GPIOA Peripheral clock
+			RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2,ENABLE);
+			RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA,ENABLE);
 
-		  GPIO_InitTypeDef 	gpio_init_struct;
+			//PA2 is UART2_TX, PA3 is UART2_RX
 
-		  /* set all gpio as 0 */
+			//2. Alternate function configuration of MCU pins to behave as UART2 TX and RX
 
-		  memset(&gpio_init_struct,0,sizeof(gpio_init_struct));
+			//zeroing each and every member element of the structure
+			memset(&gpio_uart_pins,0,sizeof(gpio_uart_pins));
 
-		  /*configure usart rx and tx*/
-		  gpio_init_struct.GPIO_Pin = GSM_TX_PIN|GSM_RX_PIN;
-		  gpio_init_struct.GPIO_Mode = GPIO_Mode_AF;
-		  gpio_init_struct.GPIO_Speed = GPIO_Speed_50MHz;
-		  gpio_init_struct.GPIO_OType = GPIO_OType_PP;
-		  gpio_init_struct.GPIO_PuPd = GPIO_PuPd_UP ;
+			gpio_uart_pins.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3;
+			gpio_uart_pins.GPIO_Mode = GPIO_Mode_AF;
+			gpio_uart_pins.GPIO_PuPd = GPIO_PuPd_UP;
+			gpio_uart_pins.GPIO_OType= GPIO_OType_PP;
+			gpio_uart_pins.GPIO_Speed = GPIO_Speed_50MHz;
+			GPIO_Init(GPIOA, &gpio_uart_pins);
 
-		  GPIO_Init(GSM_GPIO, &gpio_init_struct);
+            // gpio typedef to init pinA0 as external interrupt
+			// this is know me when this event has occured
+			//interrupt configuration for the button (PC13)
+			//1. system configuration for exti line (SYSCFG settings)
 
-		  GPIO_PinAFConfig(GSM_GPIO, GSM_AF_PIN2_SOURCE, GSM_AF_USART);
-		  GPIO_PinAFConfig(GSM_GPIO, GSM_AF_PIN1_SOURCE, GSM_AF_USART);
+	    	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource0);
 
-	      /*configure NVIC*/
-	      NVIC_InitTypeDef usart2_irq_struct;
+			//2. EXTI line configuration 13,falling edge, interrup mode
+			EXTI_InitTypeDef exti_init;
+			exti_init.EXTI_Line = EXTI_Line0;
+			exti_init.EXTI_Mode = EXTI_Mode_Interrupt;
+			exti_init.EXTI_Trigger = EXTI_Trigger_Rising;
+			exti_init.EXTI_LineCmd = ENABLE;
+			EXTI_Init(&exti_init);
 
-		  /* set all gpio as 0 */
+			//3. NVIC settings (IRQ settings for the selected EXTI line(13)
+			NVIC_SetPriority(EXTI0_IRQn,6);
+			NVIC_EnableIRQ(EXTI0_IRQn);
 
-		  memset(&usart2_irq_struct,0,sizeof(usart2_irq_struct));
+			//3. AF mode settings for the pins
+		    GPIO_PinAFConfig(GPIOA,GPIO_PinSource2,GPIO_AF_USART2); //PA2
+			GPIO_PinAFConfig(GPIOA,GPIO_PinSource3,GPIO_AF_USART2); //PA3
 
-	      usart2_irq_struct.NVIC_IRQChannel = GSM_USART_IRQ;
-		  usart2_irq_struct.NVIC_IRQChannelCmd = ENABLE;
-		  usart2_irq_struct.NVIC_IRQChannelPreemptionPriority = GSM_USART_IRQ_PERIORITY;
-		  usart2_irq_struct.NVIC_IRQChannelSubPriority = GSM_USART_IRQ_PERIORITY;
+			//4. UART parameter initializations
+			//zeroing each and every member element of the structure
+			memset(&uart2_init,0,sizeof(uart2_init));
 
-	      NVIC_Init(&usart2_irq_struct);
+			uart2_init.USART_BaudRate = 9600;
+			uart2_init.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+			uart2_init.USART_Mode =  USART_Mode_Tx | USART_Mode_Rx;
+			uart2_init.USART_Parity = USART_Parity_No;
+			uart2_init.USART_StopBits = USART_StopBits_1;
+			uart2_init.USART_WordLength = USART_WordLength_8b;
+			USART_Init(USART2,&uart2_init);
 
-	     /*configure usart*/
+			 USART2->CR1  |= (USART_CR1_RE | USART_CR1_TE);  // RX, TX enable.
 
-	    USART_InitTypeDef 	usart_init_struct;
+			 USART2->CR1 |=(1<<6);
+			//fun_create_mutual_exclucion();
+			//lets enable the UART byte reception interrupt in the microcontroller
+			USART_ITConfig(USART2,USART_IT_RXNE,ENABLE);
 
-	    /* set all gpio as 0 */
+			//lets set the priority in NVIC for the UART2 interrupt
+			NVIC_SetPriority(USART2_IRQn,5);
 
-	    memset(&usart_init_struct,0,sizeof(usart_init_struct));
+			//enable the UART2 IRQ in the NVIC
+		    NVIC_EnableIRQ(USART2_IRQn);
 
-	    usart_init_struct.USART_BaudRate = GSM_BAUD_RATE;
-	    usart_init_struct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-	    usart_init_struct.USART_Mode = USART_Mode_Tx|USART_Mode_Rx;
-	    usart_init_struct.USART_Parity = USART_Parity_No;
-	    usart_init_struct.USART_StopBits = USART_StopBits_1;
-	    usart_init_struct.USART_WordLength = USART_WordLength_8b;
+			//5. Enable the UART2 peripheral
+			USART_Cmd(USART2,ENABLE);
 
-	    USART_Init(GSM_USART, &usart_init_struct);
 
-	    GSM_USART->CR1 |=(1<<6);
-
-		USART_ITConfig(GSM_USART, USART_IT_RXNE, ENABLE);
-
-	    USART_Cmd(GSM_USART, ENABLE);
+			printf("exit from usart2\n");
 
 
 }
 
-
-
-void send_command_to_init_gsm(){
-
-	  char data_receive[100];
-
-      uint8_t x;
-
-      uint32_t i=0;
-
-	  //Once the handshake test is successful, it will back to OK
-
-	 SIM900_PutFrame(test_connect);
-
-	 for(i=0; i<1000000;i++);
-
-	  x = SIM900_GetFrame(data_receive,sizeof(data_receive));
-
-	  if(x == 0){
-
-		  printf("error there is no data in buffer");
-	  }
-
-	  else{
-
-		  if(strcmp(data_receive, "ok") == 0){
-
-			 printf("connect to network\n");
-		  }
-
-		  else{
-
-			  printf("error in connect on network");
-		  }
-	  }
-
-
-	    //Signal quality test, value range is 0-31 , 31 is the best
-
-	     SIM900_PutFrame(quality_test);
-
-	  	 for(i=0; i<1000000;i++);
-
-	  	 //Check whether it has registered in the network
-
-	     SIM900_PutFrame(net_reg);
-
-	    for(i=0; i<1000000;i++);
-
-
-
-	 }
-
-
-
-
-/**
- * @brief Send a zero terminated string to SIm900.
+/*
  *
- * @param buf String to send.
+ * this function is used to init gsm
+ *
+ * and create task
+ *
+ * and create usart init and
+ *
+ * create event which happen to send message
+ *
+ *
  */
-void SIM900_PutFrame(char* buf) {
 
-           uint16_t len = strlen(buf);
 
-          for(int i = 0; i < len; i++) {
+void gsm_os_init(void *parameter){
 
-	         USART_SendData(GSM_USART, buf[i]);
-          }
+
+	       printf("inside gsm first\n");
+
+			char *m ="01028519757;\r\n";
+
+			usart2_init();
+
+
+			// create semphore to shared data
+
+			queue1 = xQueueCreate(10,sizeof(char));
+
+			sem1 = xSemaphoreCreateMutex();
+
+
+			 //lets create task-2
+
+
+			// first task to send command to init gsm
+
+			 xTaskCreate(send_command_to_init_gsm,"send_command_to_init_gsm",128,NULL,5,&handle_send_command_to_init_gsm);
+
+			 //second task to call someone using gsm at commands
+
+	         xTaskCreate(gsm_call,"gsm_call",128,(void *)m,5,&handle_gsm_call);
+
+	         //third task to send sms to anyone
+
+			 xTaskCreate(send_sms,"send_sms",128,NULL,5,&handle_send_sms);
+
+
+
+	while(1){
+
+
+		  printf("exit gsm first\n");
+
+
+		  //delete this task this is not used
+
+		  vTaskDelete(handle_gsm_os_init);
+
+
+	}
 
 }
 
+/*
+ * function to init gsm
+ *
+ * used to send command to make sure
+ *
+ * gsm is run and connect on network
+ *
+ *
+ */
+
+void send_command_to_init_gsm(void *parameter){
 
 
-uint8_t SIM900_GetFrame(uint8_t* buf, uint8_t len) {
+	printf("first task_send command to init gsm \n");
+
+
+	           uint32_t current_notification_value=0;
+
+	           /* to change priority */
+	       	  UBaseType_t p1;
+
+	         while(1){
+
+		       //lets wait until we receive any notification event from button_Task
+
+				if ( xTaskNotifyWait(0,0,&current_notification_value,portMAX_DELAY) == pdTRUE )
+
+				{
 
 
 
-	   uint8_t size = USART_ReceiveString(GSM_USART,buf,len);
+					//change priority
 
-	   if(size <= 0){
+					p1 = uxTaskPriorityGet(handle_send_command_to_init_gsm);
 
-		   printf("error no data in buffer\n");
-		   return 0;
+
+
+					vTaskDelay(pdMS_TO_TICKS(20));
+
+
+
+					/*
+					 * change priority to become higher priority
+					 *
+					 *
+					 */
+
+
+
+
+					 SIM900_PutFrame(test_connect);
+
+					 printf("%s",test_connect);
+
+
+					 vTaskDelay(pdMS_TO_TICKS(5000));
+
+					 SIM900_PutFrame(quality_test);
+
+					 printf("%s",quality_test);
+
+					 vTaskDelay(pdMS_TO_TICKS(3000));
+
+					 SIM900_PutFrame(net_reg);
+
+					 printf("%s",net_reg);
+
+					 vTaskDelay(pdMS_TO_TICKS(3000));
+
+					 printf("task send command \n");
+
+				     xTaskNotify(handle_send_sms,0x0,eIncrement);
+
+					 taskYIELD();
+
+
+
+				}
+
+
+
+				}
+	}
+
+
+/*
+ * function to send frame to gsm
+ *
+ * used this function at any time
+ *
+ */
+
+ void SIM900_PutFrame(char *buf) {
+
+
+           xSemaphoreTake(sem1,portMAX_DELAY);
+
+		   uint16_t len = strlen(buf);
+
+		   for(int i = 0; i < len; i++) {
+
+		     USART_SendData(USART2,buf[i]);
+
+
+		   }
+
+		    xSemaphoreGive(sem1);
 	   }
 
-	   else{
 
 
-		   return size ;
-		  // printf("length is = %d\n",size)
-	   }
-
-	return size;
-}
-
-void gsm_call(char x[]){
-
-
-	/* call gsm module */
-
-
-	    char y[]="ATD+20";
+/*
+ * function to receive frame from gsm
+ *
+ * used this function at any time
+ *
+ * and when data is receive from this module
+ *
+ * to check if it is connet or not
+ *
+ */
 
 
-
-		uint32_t i=0;
-
-		/* select callmode */
-
-		strcat(y,x);
-
-
-		SIM900_PutFrame(y);
+/*
+ * function to send command  from gsm
+ *
+ * to this number mobile
+ *
+ */
 
 
-	 	for(i=0; i<1000000;i++);//delay 20 seconds
+void gsm_call(void *num){
+
+	printf("second task to call gsm \n");
 
 
+	   uint32_t current_notification_value=0;
+
+	   char  call[] = "ATD";                  // call a specified number.
 
 
 
-}
+	while(1){
 
-void send_sms(char x[]){
-
-	char y[]="AT+CMGS=\"+20";
-
-	char m[] = "\"\r\n";
-
-	uint32_t i=0;
-
-	/* select textmode */
-
-	SIM900_PutFrame(config_mod);
-
- 	for(i=0; i<1000000;i++);
-
-	strcat(y,x);
+		   if(flag_delay == 1 && current == 0){
 
 
-	strcat(y,m);
+			strcat(call,(char *)num);
+
+			SIM900_PutFrame(call);
+
+			printf("%s",call);
+
+			printf("call sms \n");
+
+		   flag_delay = 0;
+
+		   current =0;
 
 
-	SIM900_PutFrame(y);
+
+		}
 
 
+	}
 
 }
+
+/*
+ * function to send sms  from gsm
+ *
+ * to this number mobile
+ *
+ */
+
+
+void send_sms(void *num){
+
+
+
+
+	     unsigned char caller_id[20] = "01028519757";                        // will contain  the phone number +33612345678
+	     unsigned char sms_header[30] = {0};
+
+	     TickType_t xLastWakeTime;
+
+	     const TickType_t xFrequency = pdMS_TO_TICKS(25000);
+
+	     const TickType_t xFrequency1 = pdMS_TO_TICKS(1000);
+
+
+	  // Initialise the xLastWakeTime variable with the current time.
+
+		 xLastWakeTime = xTaskGetTickCount();
+
+	     uint32_t current_notification_value=0;
+
+
+	while(1){
+
+
+		if ( xTaskNotifyWait(0,0,&current_notification_value,portMAX_DELAY) == pdTRUE ){
+
+
+
+			vTaskDelayUntil( &xLastWakeTime, xFrequency);
+
+			SIM900_PutFrame("AT+CMGF=1\r\n"); //configure mode as text
+
+
+			vTaskDelayUntil( &xLastWakeTime, xFrequency1);
+
+
+			strcpy(sms_header, "AT+CMGS=\"");                        // Make AT command to send a SMS
+
+		    strcat(sms_header, caller_id);                            // Add recipient phone number
+
+			strcat(sms_header , "\"\r");                           // Terminate the string with ", 129 [ENTER]
+
+			SIM900_PutFrame(sms_header); //configure mode as text
+
+
+			printf("%s",sms_header);
+
+
+			vTaskDelay(pdMS_TO_TICKS(2000));
+
+        	SIM900_PutFrame("اHI HAZEM TEAM LEADER OF ACCIDENT SYSTEM \x1a");
+
+			vTaskDelay(pdMS_TO_TICKS(20000));
+
+			  flag_delay = 1;
+
+		      current =0;
+
+		      printf("send sms\n");
+
+		      xTaskNotify(handle_gsm_call,0x0,eIncrement);
+
+
+		   }
+
+		}
+
+
+	}
+
+
+
+/*
+ * function to  deal with interrupt
+ *
+ * has occured
+ *
+ */
+
+
+void EXTI0_IRQHandler(void)
+{
+
+
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+	//1. clear the interrupt pending bit of the EXTI line (13)
+
+	EXTI_ClearITPendingBit(EXTI_Line0);
+
+
+
+	xTaskNotifyFromISR(handle_send_command_to_init_gsm,0,eNoAction,&xHigherPriorityTaskWoken);
+
+
+	// if the above freertos apis wake up any higher priority task, then yield the processor to the
+	//higher priority task which is just woken up.
+
+	if(xHigherPriorityTaskWoken)
+	{
+		printf("there is higher priority\n");
+		taskYIELD();
+	}
+
+
+
+}
+

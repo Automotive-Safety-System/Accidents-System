@@ -1,7 +1,7 @@
 /* Includes */
 #include "stm32f4xx.h"
 #include "stm32f4_discovery.h"
-
+#include "OS.h"
 /* Private macro */
 /* Private variables */
 /* Private function prototypes */
@@ -29,7 +29,8 @@ void  vRedLedControllerTask(void *pvParameters)
 int main(void){
 	STM_EVAL_LEDInit(LED3);
 
-int i;
+
+    int i;
 	char ssid[] = "Hazem";
 	char pass[] ="h2326574";
 
@@ -85,8 +86,11 @@ int i;
 	//gsm_call(x);
 	  extern TM_GPS_t GPS_Data;
 	  TM_GPS_Init(&GPS_Data, 9600);
+
 	  OS_INIT();
+
 	  vTaskStartScheduler();
+
 
 
 /* Infinite loop */
