@@ -12,6 +12,10 @@
 #include "stm32f4_discovery.h"
 #include "string.h"
 
+
+uint8_t ESP_connection_status = ESP_CONNECTION_TIMEOUT;
+
+
 void ESP_init(){
 	char acknowldge[100]={'\0'};
     uint32_t i = 0;
@@ -155,6 +159,51 @@ uint8_t ESP_connectAccessPoint(char* ssid, char* password){
 		return ESP_JOIN_UNKNOWN_ERROR;*/
 }
 
+/* task is checking the ESP_connection_status
+ * if the status is ESP_CONNECTION_TIMEOUT which is
+ * the not connected status by default, task tries to connect
+ * again after 10 ms, if any other error occurred you can check
+ * that error by reading the status, fix the proplem
+ * then set the status to ESP_CONNECTION_TIMEOUT
+ * the task should try connecting again within 500 ms*/
+void ESP_connectAccessPointTask(void * pvParameters){
+	char command[100] = {'\0'};
+	sprintf(command, "AT+CWJAP=\"%s\",\"%s\"%s", SSID, PASS, "\r\n");
+	char response[100]={'\0'};
+	uint8_t i = 0;
+
+	for (;;){
+		i = 0;
+	//return ESP_sendRequest(command, "WIFI CONNECTED");
+		if (ESP_connection_status == ESP_CONNECTION_TIMEOUT){
+			USART_SendString(ESP_USART, command, -1);
+			vTaskDelay(pdMS_TO_TICKS(10));
+			while (!USART_BufferEmpty(ESP_USART)){
+				response[i] = USART_ReceiveData(ESP_USART);
+				i++;
+			}
+			if(strstr(response, "WIFI CONNECTED") != 0){
+				ESP_connection_status = ESP_WIFI_CONNECTED;
+			}
+			else if(strstr(response, "+CWJAP:1") != 0){
+				ESP_connection_status = ESP_CONNECTION_TIMEOUT;
+			}
+			else if(strstr(response, "+CWJAP:2") != 0){
+				ESP_connection_status = ESP_WRONG_PASSWORD;
+			}
+			else if(strstr(response, "+CWJAP:3") != 0){
+				ESP_connection_status = ESP_NOT_FOUND_TARGET_AP;
+			}
+			else if(strstr(response, "+CWJAP:4") != 0){
+				ESP_connection_status = ESP_CONNECTION_FAILED;
+			}
+			else
+				ESP_connection_status = ESP_JOIN_UNKNOWN_ERROR;
+		}
+		vTaskDelay(pdMS_TO_TICKS(500));
+
+	}
+}
 uint8_t ESP_WIFIMode(uint8_t mode){
 	//mode = 1 for station
 	char command[20]={'\0'};
