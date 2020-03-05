@@ -162,28 +162,32 @@ uint8_t ESP_connectAccessPoint(char* ssid, char* password){
 /* task is checking the ESP_connection_status
  * if the status is ESP_CONNECTION_TIMEOUT which is
  * the not connected status by default, task tries to connect
- * again after 10 ms, if any other error occurred you can check
+ * again after 10000 ms, if any other error occurred you can check
  * that error by reading the status, fix the proplem
  * then set the status to ESP_CONNECTION_TIMEOUT
- * the task should try connecting again within 500 ms*/
+ * the task should try connecting again within 500+10000 ms*/
 void ESP_connectAccessPointTask(void * pvParameters){
 	char command[100] = {'\0'};
 	sprintf(command, "AT+CWJAP=\"%s\",\"%s\"%s", SSID, PASS, "\r\n");
 	char response[100]={'\0'};
 	uint8_t i = 0;
-
+	char c;
+	//USART_SendString(ESP_USART, command, -1);
 	for (;;){
-		i = 0;
+		//i = 0;
 	//return ESP_sendRequest(command, "WIFI CONNECTED");
 		if (ESP_connection_status == ESP_CONNECTION_TIMEOUT){
 			USART_SendString(ESP_USART, command, -1);
-			vTaskDelay(pdMS_TO_TICKS(10));
+			vTaskDelay(pdMS_TO_TICKS(10000));
 			while (!USART_BufferEmpty(ESP_USART)){
-				response[i] = USART_ReceiveData(ESP_USART);
-				i++;
+				if ((c = USART_ReceiveData(ESP_USART))!=0){
+					response[i] = c;
+					i++;
+				}
 			}
 			if(strstr(response, "WIFI CONNECTED") != 0){
 				ESP_connection_status = ESP_WIFI_CONNECTED;
+				//STM_EVAL_LEDOn(LED3);
 			}
 			else if(strstr(response, "+CWJAP:1") != 0){
 				ESP_connection_status = ESP_CONNECTION_TIMEOUT;

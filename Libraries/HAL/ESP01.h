@@ -28,6 +28,8 @@ enum ESP_JOINAP_STATUS {
 void ESP_init();
 uint8_t ESP_sendBlindCommand(char* command);
 uint8_t ESP_sendRequest(char *command, char *expected_response);
+uint8_t ESP_connectAccessPoint(char* ssid, char* password);
+void ESP_connectAccessPointTask(void * pvParameters);
 uint8_t ESP_readData(char* user_buffer, char delimeter);
 uint8_t ESP_WIFIMode(uint8_t mode);
 uint8_t ESP_ConnectionMode(uint8_t mode);

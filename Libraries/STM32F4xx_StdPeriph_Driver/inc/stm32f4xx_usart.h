@@ -369,8 +369,8 @@ typedef struct
 /* Exported macro ------------------------------------------------------------*/
 /*buffer size can be modified*/
 #define USART1_BUFFER_SIZE		32
-#define USART2_BUFFER_SIZE 		32
-#define USART3_BUFFER_SIZE 		32
+#define USART2_BUFFER_SIZE 		100
+#define USART3_BUFFER_SIZE 		100
 #define USART4_BUFFER_SIZE 		32
 #define USART5_BUFFER_SIZE 		32
 #define USART6_BUFFER_SIZE 		32
