@@ -9,12 +9,18 @@
 #include "ESP01.h"
 #include "ESP01_config.h"
 #include "stm32f4xx_usart.h"
+#include "tm_stm32_buffer.h"
 #include "stm32f4_discovery.h"
 #include "string.h"
 
+#define TCP_CONNECTED			1
+#define TCP_NOT_CONNECTED		0
 
 uint8_t ESP_connection_status = ESP_CONNECTION_TIMEOUT;
+uint8_t ESP_tcp_status = TCP_NOT_CONNECTED ;
 
+uint8_t ESP_Send_Buffer[ESP_SEND_BUFFER_SIZE];
+TM_BUFFER_t ESP_Send_Buffer_obj = {ESP_SEND_BUFFER_SIZE, 0, 0, ESP_Send_Buffer, 0, '\n'};
 
 void ESP_init(){
 	char acknowldge[100]={'\0'};
@@ -90,6 +96,9 @@ void ESP_init(){
 		  }
 
 	 }
+	 ESP_WIFIMode(1);
+	 ESP_ConnectionMode(0);
+	 ESP_ApplicationMode(0);
 
 }
 
@@ -124,18 +133,6 @@ uint8_t ESP_sendRequest(char *command, char *expected_response){
 }
 
 // TODO : convert the following to a task
-uint8_t ESP_readData(char* user_buffer, char delimeter){
-//add flag to check first if we expect data
-//read data after the form  +IPD, length:data_here
-	uint32_t i = 0;
-	while (!USART_BufferEmpty(ESP_USART)){
-			user_buffer[i] = USART_ReceiveData(ESP_USART);
-			i++;
-	}
-	return 1;
-}
-
-
 uint8_t ESP_connectAccessPoint(char* ssid, char* password){
 	char command[100] = {'\0'};
 	sprintf(command, "AT+CWJAP=\"%s\",\"%s\"%s", ssid, password, "\r\n");
@@ -158,6 +155,7 @@ uint8_t ESP_connectAccessPoint(char* ssid, char* password){
 		else
 		return ESP_JOIN_UNKNOWN_ERROR;*/
 }
+
 
 /* task is checking the ESP_connection_status
  * if the status is ESP_CONNECTION_TIMEOUT which is
@@ -235,13 +233,56 @@ uint8_t ESP_ApplicationMode(uint8_t mode){
 
 uint8_t ESP_StartTCP(char* Domain, char* Port){
 	uint8_t startResponse;
-	char command[60]={'\0'};
+	char command[100]={'\0'};
 
 	sprintf(command, "AT+CIPSTART=\"TCP\",\"%s\",%s%s", Domain, Port, "\r\n");
 
 	startResponse = ESP_sendRequest(command, "CONNECT");
 	return startResponse;
 }
+
+/*this task connects automatically to the web server and port
+ * which are defined in ESP01_config.h
+ * if for any reason the TCP connection went down,
+ * just set the ESP_tcp_status = TCP_NOT_CONNECTED */
+void ESP_StartTCPTask(void * pvParameters){
+
+	char command[100]={'\0'};
+	char response[100]={'\0'};
+	sprintf(command, "AT+CIPSTART=\"TCP\",\"%s\",%s%s", ADDRESS, PORT, "\r\n");
+	uint8_t i = 0;
+	char c;
+
+	for(;;){
+		if(ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_NOT_CONNECTED){
+			USART_SendString(ESP_USART, command, -1);
+			vTaskDelay(pdMS_TO_TICKS(5000));
+			while (!USART_BufferEmpty(ESP_USART)){
+				if ((c = USART_ReceiveData(ESP_USART))!=0){
+					response[i] = c;
+					i++;
+				}
+			}
+			if(strstr(response, "CONNECT") != 0){
+				ESP_tcp_status = TCP_CONNECTED;
+				//STM_EVAL_LEDOn(LED3);
+			}
+		}
+		vTaskDelay(500);
+	}
+
+}
+uint8_t ESP_ReadData(char* user_buffer, char delimeter){
+//add flag to check first if we expect data
+//read data after the form  +IPD, length:data_here
+	uint32_t i = 0;
+	while (!USART_BufferEmpty(ESP_USART)){
+			user_buffer[i] = USART_ReceiveData(ESP_USART);
+			i++;
+	}
+	return 1;
+}
+
 
 uint8_t ESP_SendData(uint32_t length, char* data){
 
@@ -253,4 +294,49 @@ uint8_t ESP_SendData(uint32_t length, char* data){
 	}
 
 	return 1;
+}
+
+void ESP_SendDataTask(void * pvParameters){
+
+	char response[100]={'\0'};
+	char command[20]={'\0'};
+	uint8_t i = 0;
+	uint32_t length ;
+	char c;
+
+	for(;;){
+		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED){
+
+			if(TM_BUFFER_GetFull(&ESP_Send_Buffer_obj) != 0){
+
+				length = TM_BUFFER_GetFull(&ESP_Send_Buffer_obj);
+				memset(command, 0, 20*sizeof(char));
+				sprintf(command, "AT+CIPSEND=%lu%s", length,"\r\n");
+				ESP_sendBlindCommand(command);
+				ESP_sendBlindCommand("AT+CIPSTATUS");
+				vTaskDelay(pdMS_TO_TICKS(1));
+				while (!USART_BufferEmpty(ESP_USART)){
+					if ((c = USART_ReceiveData(ESP_USART))!=0){
+						response[i] = c;
+						i++;
+					}
+				}
+
+				if(strstr(response, "STATUS:3") != 0){
+					for (i=0 ; i<length ; i++){
+						TM_BUFFER_Read(&ESP_Send_Buffer_obj, &c, 1);
+						USART_SendData(ESP_USART, c);
+					}
+
+				}
+
+				else if(strstr(response, "STATUS:4") != 0){
+					ESP_tcp_status = TCP_NOT_CONNECTED;
+				}
+			}
+		}
+
+	}
+	vTaskDelay(pdMS_TO_TICKS(500));
+
 }

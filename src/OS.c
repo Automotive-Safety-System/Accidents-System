@@ -7,6 +7,7 @@
 #include "OS.h"
 #include "tm_stm32_gps.h"
 #include "GSM.h"
+#include "ESP01.h"
 /*create all tasks here*/
 
 
@@ -30,9 +31,26 @@ void OS_INIT(void){
 					5,
 					&handle_gsm_os_init);
 
+	xTaskCreate(ESP_connectAccessPointTask,
+				"esp_connectAP",
+				200,
+				NULL,
+				5,
+				NULL);
 
+	xTaskCreate(ESP_StartTCPTask,
+				"esp_connectTCP",
+				200,
+				NULL,
+				5,
+				NULL);
 
-
+	xTaskCreate(ESP_SendDataTask,
+				"esp_sendData",
+				200,
+				NULL,
+				5,
+				NULL);
 }
 
 
