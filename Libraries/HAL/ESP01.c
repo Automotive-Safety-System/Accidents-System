@@ -22,6 +22,9 @@ uint8_t ESP_tcp_status = TCP_NOT_CONNECTED ;
 uint8_t ESP_Send_Buffer[ESP_SEND_BUFFER_SIZE];
 TM_BUFFER_t ESP_Send_Buffer_obj = {ESP_SEND_BUFFER_SIZE, 0, 0, ESP_Send_Buffer, 0, '\n'};
 
+uint8_t ESP_Receive_Buffer[ESP_RECEIVE_BUFFER_SIZE];
+TM_BUFFER_t ESP_Receive_Buffer_obj = {ESP_RECEIVE_BUFFER_SIZE, 0, 0, ESP_Receive_Buffer, 0, '\n'};
+
 void ESP_init(){
 	char acknowldge[100]={'\0'};
     uint32_t i = 0;
@@ -75,7 +78,7 @@ void ESP_init(){
 
 	  USART_Cmd(ESP_USART, ENABLE);
 
-//TODO : convert the following to a time constrained hand shake in RTOS
+
 
 	  /*send AT to check if the module connected*/
 	 USART_SendString(ESP_USART, "AT\r\n", -1);
@@ -102,7 +105,7 @@ void ESP_init(){
 
 }
 
-// TODO : convert the following to a time constrained tasks
+
 uint8_t ESP_sendBlindCommand(char* command){
 
 	USART_SendString(ESP_USART, command, -1);
@@ -132,13 +135,12 @@ uint8_t ESP_sendRequest(char *command, char *expected_response){
 	return response_flag;
 }
 
-// TODO : convert the following to a task
 uint8_t ESP_connectAccessPoint(char* ssid, char* password){
 	char command[100] = {'\0'};
 	sprintf(command, "AT+CWJAP=\"%s\",\"%s\"%s", ssid, password, "\r\n");
 	return ESP_sendRequest(command, "WIFI CONNECTED");
 
-	//TODO
+
 	/*
 
 	 	 if (ESP_sendRequest(command, "WIFI CONNECTED"))
@@ -283,6 +285,61 @@ uint8_t ESP_ReadData(char* user_buffer, char delimeter){
 	return 1;
 }
 
+void ESP_ReadDataTask(void * pvParameters){
+
+	char response[100]={'\0'};
+	uint8_t i = 0;
+	int32_t length ;
+	char c;
+	for(;;){
+		//TODO check semaphores first to see if it's allowed to work
+		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED){
+
+			if (!USART_BufferEmpty(ESP_USART)){
+				for(i = 0 ; i < 5 ; i++){
+					if ((c = USART_ReceiveData(ESP_USART))!=0){
+						response[i] = c;
+						i++;
+					}
+				}
+			}
+
+
+			if(strstr(response, "+IPD") != 0){
+				//TODO STOP OTHER TASKS USING SEMAPHORES HERE
+				i = 0;
+				memset(response, 0, 100*sizeof(char));
+				while (!USART_BufferEmpty(ESP_USART)){
+					if ((c = USART_ReceiveData(ESP_USART))!=0){
+						if (c == ':')
+							break;
+						response[i] = c;
+						i++;
+					}
+				}
+				length = atol(response);
+			}
+
+			while (!USART_BufferEmpty(ESP_USART)){
+				if ((c = USART_ReceiveData(ESP_USART))!=0){
+					//TODO mutex or semaphore the buffer
+					TM_BUFFER_Write(&ESP_Receive_Buffer_obj, &c, 1);
+					length--;
+					if (length == 0 )
+						break;
+				}
+			}
+
+			if (length == 0){
+				//TODO enable other tasks to work using semaphore
+			}
+		}
+
+		//TODO else {make other tasks work using semaphores}
+
+		vTaskDelay(pdMS_TO_TICKS(2));
+	}
+}
 
 uint8_t ESP_SendData(uint32_t length, char* data){
 
@@ -308,7 +365,7 @@ void ESP_SendDataTask(void * pvParameters){
 		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED){
 
 			if(TM_BUFFER_GetFull(&ESP_Send_Buffer_obj) != 0){
-
+				i = 0;
 				length = TM_BUFFER_GetFull(&ESP_Send_Buffer_obj);
 				memset(command, 0, 20*sizeof(char));
 				sprintf(command, "AT+CIPSEND=%lu%s", length,"\r\n");
@@ -324,6 +381,7 @@ void ESP_SendDataTask(void * pvParameters){
 
 				if(strstr(response, "STATUS:3") != 0){
 					for (i=0 ; i<length ; i++){
+						//TODO mutex or semaphore the buffer
 						TM_BUFFER_Read(&ESP_Send_Buffer_obj, &c, 1);
 						USART_SendData(ESP_USART, c);
 					}

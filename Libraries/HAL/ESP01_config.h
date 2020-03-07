@@ -31,5 +31,6 @@
 
 
 #define	ESP_SEND_BUFFER_SIZE		200
+#define ESP_RECEIVE_BUFFER_SIZE		200
 
 #endif /* HAL_ESP01_CONFIG_H_ */
