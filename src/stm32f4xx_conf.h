@@ -37,14 +37,17 @@
 #include "stm32f4xx_rcc.h"
 #include "stm32f4xx_syscfg.h"
 #include "stm32f4xx_usart.h"
+#include "stm32f4xx_i2c.h"
 #include "misc.h" /* High level functions for NVIC and SysTick (add-on to CMSIS functions) */
 #include "tm_stm32_buffer.h"
 #include "tm_stm32_gps.h"
+#include "MPU_0.h"
+#include "ESP01.h"
+#include "GSM.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
-#include "stm32f4xx_i2c.h"
-#include "MPU_0.h"
+#include "OS.h"
 
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/

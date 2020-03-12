@@ -220,6 +220,9 @@ typedef struct {
  * @{
  */
 
+void GPS_update_task(void * pvParameters);
+
+
 /**
  * @brief  Initializes GPS and USART peripheral
  * @param  *GPS_Data: Pointer to @ref TM_GPS_t structure to set default values

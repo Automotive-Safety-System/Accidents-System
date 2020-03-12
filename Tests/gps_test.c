@@ -1,5 +1,8 @@
-// inside main insert the following
+// note gps using usart2 by default
 
+
+
+// inside main insert the following
 
 uart3_init();
    //uart2_init();
@@ -139,4 +142,22 @@ uart3_init();
   	  USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
   	  USART_Cmd(USART3, ENABLE);
   }
+
+
+
+
+
+
+  /*********************************************
+   *********************************************/
+
+  /* if using freeRTOS, insert the following in main
+   * and then any task wants to use GPS_Data should extern
+   * that data structure in the new task's scope
+   * and access it to read data  */
+
+  extern TM_GPS_t GPS_Data;
+  TM_GPS_Init(&GPS_Data, 9600);
+  OS_INIT();
+  vTaskStartScheduler();
 

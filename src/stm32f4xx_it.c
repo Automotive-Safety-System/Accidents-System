@@ -122,7 +122,13 @@ void DebugMon_Handler(void)
 void USART2_IRQHandler(void){
 
 	if (USART_GetFlagStatus(USART2, USART_FLAG_TC) != RESET){
-		USART_ClearITPendingBit(USART2, USART_IT_TC);
+		if (USART_sendBufferEmpty(USART2))
+			USART_ClearITPendingBit(USART2, USART_IT_TC);
+
+		else if (!USART_sendBufferEmpty(USART2)){
+			USART_ClearITPendingBit(USART2, USART_IT_TC);
+			USART_sendHandler(USART2);
+		}
 	}
 
 	if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET){
@@ -134,7 +140,13 @@ void USART3_IRQHandler(void){
 
 
 	if (USART_GetFlagStatus(USART3, USART_FLAG_TC) != RESET){
-		USART_ClearITPendingBit(USART3, USART_IT_TC);
+		if (USART_sendBufferEmpty(USART3))
+			USART_ClearITPendingBit(USART3, USART_IT_TC);
+
+		else if (!USART_sendBufferEmpty(USART3)){
+			USART_ClearITPendingBit(USART3, USART_IT_TC);
+			USART_sendHandler(USART3);
+		}
 	}
 
 	if (USART_GetFlagStatus(USART3, USART_FLAG_RXNE) != RESET){
@@ -145,7 +157,13 @@ void USART3_IRQHandler(void){
 void USART4_IRQHandler(void){
 
 	if (USART_GetFlagStatus(UART4, USART_FLAG_TC) != RESET){
-		USART_ClearITPendingBit(UART4, USART_IT_TC);
+		if (USART_sendBufferEmpty(UART4))
+			USART_ClearITPendingBit(UART4, USART_IT_TC);
+
+		else if (!USART_sendBufferEmpty(UART4)){
+			USART_ClearITPendingBit(UART4, USART_IT_TC);
+			USART_sendHandler(UART4);
+		}
 	}
 
 	if (USART_GetFlagStatus(UART4, USART_FLAG_RXNE) != RESET){
@@ -156,7 +174,13 @@ void USART4_IRQHandler(void){
 void USART5_IRQHandler(void){
 
 	if (USART_GetFlagStatus(UART5, USART_FLAG_TC) != RESET){
-		USART_ClearITPendingBit(UART5, USART_IT_TC);
+		if (USART_sendBufferEmpty(UART5))
+			USART_ClearITPendingBit(UART5, USART_IT_TC);
+
+		else if (!USART_sendBufferEmpty(UART5)){
+			USART_ClearITPendingBit(UART5, USART_IT_TC);
+			USART_sendHandler(UART5);
+		}
 	}
 
 	if (USART_GetFlagStatus(UART5, USART_FLAG_RXNE) != RESET){
