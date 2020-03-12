@@ -16,36 +16,10 @@ void uart2_init();
 **
 **===========================================================================
 */
-void  vRedLedControllerTask(void *pvParameters)
-{
-
-	while(1)
-	{
-		STM_EVAL_LEDToggle(LED3);
-		vTaskDelay(pdMS_TO_TICKS(500));
-	}
-}
 
 int main(void){
 
-	usart2_init();
-
-
-	/* if event has occur */
-
-	// telephone number
-
-	char x[]="87564544534";
-
-//	send_command_to_init_gsm();
-
-	//send telephone number
-
-	send_sms(x);
-
-	// send telephone number
-
-	//gsm_call(x);
+	I2C1_Init();
 /* Infinite loop */
   while (1){
 

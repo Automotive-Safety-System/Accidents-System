@@ -17,7 +17,7 @@
                     ##### How to use this driver #####
  ===============================================================================
     [..]
-      (#) Enable peripheral clock using RCC_APB1PeriphClockCmd(RCC_APB1Periph_Instance, ENABLE)
+      (#) Enable peripheral clock using RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2Cx, ENABLE)
           function for I2C1, I2C2 or I2C3.
   
       (#) Enable SDA, SCL  and SMBA (when used) GPIO clocks using 
@@ -91,7 +91,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_i2c.h"
 #include "stm32f4xx_rcc.h"
-#include "stm32f4_discovery.h"
 
 /** @addtogroup STM32F4xx_StdPeriph_Driver
   * @{
@@ -108,12 +107,23 @@
 #define CR1_CLEAR_MASK    ((uint16_t)0xFBF5)      /*<! I2C registers Masks */
 #define FLAG_MASK         ((uint32_t)0x00FFFFFF)  /*<! I2C FLAG mask */
 #define ITEN_MASK         ((uint32_t)0x07000000)  /*<! I2C Interrupt Enable mask */
-uint16_t counter;
+
 /* Private macro -------------------------------------------------------------*/
+#define I2C_TIMEOUT_BUSY_FLAG     25U         /*!< Timeout 25 ms             */
 #define I2C_TIMEOUT_MAX		20000
+
 /* Private variables ---------------------------------------------------------*/
-static uint32_t I2C_Timeout;
 /* Private function prototypes -----------------------------------------------*/
+static void I2C_Master_SB(I2C_HandleTypeDef *hi2c);
+static void I2C_Clear_Addr_Flag(I2C_HandleTypeDef *hi2c);
+static HAL_StatusTypeDef I2C_RequestMemoryRead(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint16_t MemAddress);
+static void I2C_Master_ADDR(I2C_HandleTypeDef *hi2c);
+static void I2C_MasterReceive_RXNE(I2C_HandleTypeDef *hi2c);
+static void I2C_MasterTransmit_TXE(I2C_HandleTypeDef *hi2c);
+static void I2C_MasterReceive_BTF(I2C_HandleTypeDef *hi2c);
+static HAL_StatusTypeDef I2C_WaitOnFlagUntilTimeout(I2C_HandleTypeDef *hi2c, uint32_t Flag,FlagStatus Status);
+
+
 /* Private functions ---------------------------------------------------------*/
 
 /** @defgroup I2C_Private_Functions
@@ -133,23 +143,23 @@ static uint32_t I2C_Timeout;
   */
 
 /**
-  * @brief  Deinitialize the Instance peripheral registers to their default reset values.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @brief  Deinitialize the I2Cx peripheral registers to their default reset values.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @retval None
   */
-void I2C_DeInit(I2C_TypeDef* Instance)
+void I2C_DeInit(I2C_TypeDef* I2Cx)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
 
-  if (Instance == I2C1)
+  if (I2Cx == I2C1)
   {
     /* Enable I2C1 reset state */
     RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C1, ENABLE);
     /* Release I2C1 from reset state */
     RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C1, DISABLE);    
   }
-  else if (Instance == I2C2)
+  else if (I2Cx == I2C2)
   {
     /* Enable I2C2 reset state */
     RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C2, ENABLE);
@@ -158,7 +168,7 @@ void I2C_DeInit(I2C_TypeDef* Instance)
   }
   else 
   {
-    if (Instance == I2C3)
+    if (I2Cx == I2C3)
     {
       /* Enable I2C3 reset state */
       RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C3, ENABLE);
@@ -169,25 +179,25 @@ void I2C_DeInit(I2C_TypeDef* Instance)
 }
 
 /**
-  * @brief  Initializes the Instance peripheral according to the specified
+  * @brief  Initializes the I2Cx peripheral according to the specified 
   *         parameters in the I2C_InitStruct.
   *           
   * @note   To use the I2C at 400 KHz (in fast mode), the PCLK1 frequency 
   *         (I2C peripheral input clock) must be a multiple of 10 MHz.  
   *           
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_InitStruct: pointer to a I2C_InitTypeDef structure that contains 
   *         the configuration information for the specified I2C peripheral.
   * @retval None
   */
-void I2C_Init(I2C_TypeDef* Instance, I2C_InitTypeDef* I2C_InitStruct)
+void I2C_Init(I2C_TypeDef* I2Cx, I2C_InitTypeDef* I2C_InitStruct)
 {
   uint16_t tmpreg = 0, freqrange = 0;
   uint16_t result = 0x04;
   uint32_t pclk1 = 8000000;
   RCC_ClocksTypeDef  rcc_clocks;
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_CLOCK_SPEED(I2C_InitStruct->I2C_ClockSpeed));
   assert_param(IS_I2C_MODE(I2C_InitStruct->I2C_Mode));
   assert_param(IS_I2C_DUTY_CYCLE(I2C_InitStruct->I2C_DutyCycle));
@@ -195,9 +205,9 @@ void I2C_Init(I2C_TypeDef* Instance, I2C_InitTypeDef* I2C_InitStruct)
   assert_param(IS_I2C_ACK_STATE(I2C_InitStruct->I2C_Ack));
   assert_param(IS_I2C_ACKNOWLEDGE_ADDRESS(I2C_InitStruct->I2C_AcknowledgedAddress));
 
-/*---------------------------- Instance CR2 Configuration ------------------------*/
-  /* Get the Instance CR2 value */
-  tmpreg = Instance->CR2;
+/*---------------------------- I2Cx CR2 Configuration ------------------------*/
+  /* Get the I2Cx CR2 value */
+  tmpreg = I2Cx->CR2;
   /* Clear frequency FREQ[5:0] bits */
   tmpreg &= (uint16_t)~((uint16_t)I2C_CR2_FREQ);
   /* Get pclk1 frequency value */
@@ -206,12 +216,12 @@ void I2C_Init(I2C_TypeDef* Instance, I2C_InitTypeDef* I2C_InitStruct)
   /* Set frequency bits depending on pclk1 value */
   freqrange = (uint16_t)(pclk1 / 1000000);
   tmpreg |= freqrange;
-  /* Write to Instance CR2 */
-  Instance->CR2 = tmpreg;
+  /* Write to I2Cx CR2 */
+  I2Cx->CR2 = tmpreg;
 
-/*---------------------------- Instance CCR Configuration ------------------------*/
+/*---------------------------- I2Cx CCR Configuration ------------------------*/
   /* Disable the selected I2C peripheral to configure TRISE */
-  Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_PE);
+  I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_PE);
   /* Reset tmpreg value */
   /* Clear F/S, DUTY and CCR[11:0] bits */
   tmpreg = 0;
@@ -230,7 +240,7 @@ void I2C_Init(I2C_TypeDef* Instance, I2C_InitTypeDef* I2C_InitStruct)
     /* Set speed value for standard mode */
     tmpreg |= result;	  
     /* Set Maximum Rise Time for standard mode */
-    Instance->TRISE = freqrange + 1;
+    I2Cx->TRISE = freqrange + 1; 
   }
   /* Configure speed in fast mode */
   /* To use the I2C at 400 KHz (in fast mode), the PCLK1 frequency (I2C peripheral
@@ -259,29 +269,29 @@ void I2C_Init(I2C_TypeDef* Instance, I2C_InitTypeDef* I2C_InitStruct)
     /* Set speed value and set F/S bit for fast mode */
     tmpreg |= (uint16_t)(result | I2C_CCR_FS);
     /* Set Maximum Rise Time for fast mode */
-    Instance->TRISE = (uint16_t)(((freqrange * (uint16_t)300) / (uint16_t)1000) + (uint16_t)1);
+    I2Cx->TRISE = (uint16_t)(((freqrange * (uint16_t)300) / (uint16_t)1000) + (uint16_t)1);  
   }
 
-  /* Write to Instance CCR */
-  Instance->CCR = tmpreg;
+  /* Write to I2Cx CCR */
+  I2Cx->CCR = tmpreg;
   /* Enable the selected I2C peripheral */
-  Instance->CR1 |= I2C_CR1_PE;
+  I2Cx->CR1 |= I2C_CR1_PE;
 
-/*---------------------------- Instance CR1 Configuration ------------------------*/
-  /* Get the Instance CR1 value */
-  tmpreg = Instance->CR1;
+/*---------------------------- I2Cx CR1 Configuration ------------------------*/
+  /* Get the I2Cx CR1 value */
+  tmpreg = I2Cx->CR1;
   /* Clear ACK, SMBTYPE and  SMBUS bits */
   tmpreg &= CR1_CLEAR_MASK;
-  /* Configure Instance: mode and acknowledgement */
+  /* Configure I2Cx: mode and acknowledgement */
   /* Set SMBTYPE and SMBUS bits according to I2C_Mode value */
   /* Set ACK bit according to I2C_Ack value */
   tmpreg |= (uint16_t)((uint32_t)I2C_InitStruct->I2C_Mode | I2C_InitStruct->I2C_Ack);
-  /* Write to Instance CR1 */
-  Instance->CR1 = tmpreg;
+  /* Write to I2Cx CR1 */
+  I2Cx->CR1 = tmpreg;
 
-/*---------------------------- Instance OAR1 Configuration -----------------------*/
-  /* Set Instance Own Address1 and acknowledged address */
-  Instance->OAR1 = (I2C_InitStruct->I2C_AcknowledgedAddress | I2C_InitStruct->I2C_OwnAddress1);
+/*---------------------------- I2Cx OAR1 Configuration -----------------------*/
+  /* Set I2Cx Own Address1 and acknowledged address */
+  I2Cx->OAR1 = (I2C_InitStruct->I2C_AcknowledgedAddress | I2C_InitStruct->I2C_OwnAddress1);
 }
 
 /**
@@ -308,135 +318,135 @@ void I2C_StructInit(I2C_InitTypeDef* I2C_InitStruct)
 
 /**
   * @brief  Enables or disables the specified I2C peripheral.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
-  * @param  NewState: new state of the Instance peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  NewState: new state of the I2Cx peripheral. 
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_Cmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_Cmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable the selected I2C peripheral */
-    Instance->CR1 |= I2C_CR1_PE;
+    I2Cx->CR1 |= I2C_CR1_PE;
   }
   else
   {
     /* Disable the selected I2C peripheral */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_PE);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_PE);
   }
 }
 
 /**
   * @brief  Enables or disables the Analog filter of I2C peripheral.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the Analog filter. 
   *          This parameter can be: ENABLE or DISABLE.
   * @note   This function should be called before initializing and enabling
             the I2C Peripheral.
   * @retval None
   */
-void I2C_AnalogFilterCmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_AnalogFilterCmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable the analog filter */
-    Instance->FLTR &= (uint16_t)~((uint16_t)I2C_FLTR_ANOFF);
+    I2Cx->FLTR &= (uint16_t)~((uint16_t)I2C_FLTR_ANOFF);    
   }
   else
   {
     /* Disable the analog filter */
-    Instance->FLTR |= I2C_FLTR_ANOFF;
+    I2Cx->FLTR |= I2C_FLTR_ANOFF;
   }
 }
 
 /**
   * @brief  Configures the Digital noise filter of I2C peripheral.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_DigitalFilter: Coefficient of digital noise filter. 
   *          This parameter can be a number between 0x00 and 0x0F.
   * @note   This function should be called before initializing and enabling
             the I2C Peripheral.
   * @retval None
   */
-void I2C_DigitalFilterConfig(I2C_TypeDef* Instance, uint16_t I2C_DigitalFilter)
+void I2C_DigitalFilterConfig(I2C_TypeDef* I2Cx, uint16_t I2C_DigitalFilter)
 {
   uint16_t tmpreg = 0;
   
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_DIGITAL_FILTER(I2C_DigitalFilter));
   
   /* Get the old register value */
-  tmpreg = Instance->FLTR;
+  tmpreg = I2Cx->FLTR;
   
-  /* Reset Instance DNF bit [3:0] */
+  /* Reset I2Cx DNF bit [3:0] */
   tmpreg &= (uint16_t)~((uint16_t)I2C_FLTR_DNF);
   
-  /* Set Instance DNF coefficient */
+  /* Set I2Cx DNF coefficient */
   tmpreg |= (uint16_t)((uint16_t)I2C_DigitalFilter & I2C_FLTR_DNF);
   
   /* Store the new register value */
-  Instance->FLTR = tmpreg;
+  I2Cx->FLTR = tmpreg;
 }
 
 /**
-  * @brief  Generates Instance communication START condition.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @brief  Generates I2Cx communication START condition.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C START condition generation.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None.
   */
-void I2C_GenerateSTART(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_GenerateSTART(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Generate a START condition */
-    Instance->CR1 |= I2C_CR1_START;
+    I2Cx->CR1 |= I2C_CR1_START;
   }
   else
   {
     /* Disable the START condition generation */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_START);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_START);
   }
 }
 
 /**
-  * @brief  Generates Instance communication STOP condition.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @brief  Generates I2Cx communication STOP condition.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C STOP condition generation.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None.
   */
-void I2C_GenerateSTOP(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_GenerateSTOP(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Generate a STOP condition */
-    Instance->CR1 |= I2C_CR1_STOP;
+    I2Cx->CR1 |= I2C_CR1_STOP;
   }
   else
   {
     /* Disable the STOP condition generation */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_STOP);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_STOP);
   }
 }
 
 /**
   * @brief  Transmits the address byte to select the slave device.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  Address: specifies the slave address which will be transmitted
   * @param  I2C_Direction: specifies whether the I2C device will be a Transmitter
   *         or a Receiver. 
@@ -445,13 +455,12 @@ void I2C_GenerateSTOP(I2C_TypeDef* Instance, FunctionalState NewState)
   *            @arg I2C_Direction_Receiver: Receiver mode
   * @retval None.
   */
-void I2C_Send7bitAddress(I2C_TypeDef* Instance, uint8_t Address, uint8_t I2C_Direction)
+void I2C_Send7bitAddress(I2C_TypeDef* I2Cx, uint8_t Address, uint8_t I2C_Direction)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_DIRECTION(I2C_Direction));
   /* Test on the direction to set/reset the read/write bit */
-
   if (I2C_Direction != I2C_Direction_Transmitter)
   {
     /* Set the address bit0 for read */
@@ -462,107 +471,105 @@ void I2C_Send7bitAddress(I2C_TypeDef* Instance, uint8_t Address, uint8_t I2C_Dir
     /* Reset the address bit0 for write */
     Address &= (uint8_t)~((uint8_t)I2C_OAR1_ADD0);
   }
-
   /* Send the address */
-  Instance->DR = Address;
-
+  I2Cx->DR = Address;
 }
 
 /**
   * @brief  Enables or disables the specified I2C acknowledge feature.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C Acknowledgement.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None.
   */
-void I2C_AcknowledgeConfig(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_AcknowledgeConfig(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable the acknowledgement */
-    Instance->CR1 |= I2C_CR1_ACK;
+    I2Cx->CR1 |= I2C_CR1_ACK;
   }
   else
   {
     /* Disable the acknowledgement */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_ACK);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_ACK);
   }
 }
 
 /**
   * @brief  Configures the specified I2C own address2.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  Address: specifies the 7bit I2C own address2.
   * @retval None.
   */
-void I2C_OwnAddress2Config(I2C_TypeDef* Instance, uint8_t Address)
+void I2C_OwnAddress2Config(I2C_TypeDef* I2Cx, uint8_t Address)
 {
   uint16_t tmpreg = 0;
 
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
 
   /* Get the old register value */
-  tmpreg = Instance->OAR2;
+  tmpreg = I2Cx->OAR2;
 
-  /* Reset Instance Own address2 bit [7:1] */
+  /* Reset I2Cx Own address2 bit [7:1] */
   tmpreg &= (uint16_t)~((uint16_t)I2C_OAR2_ADD2);
 
-  /* Set Instance Own address2 */
+  /* Set I2Cx Own address2 */
   tmpreg |= (uint16_t)((uint16_t)Address & (uint16_t)0x00FE);
 
   /* Store the new register value */
-  Instance->OAR2 = tmpreg;
+  I2Cx->OAR2 = tmpreg;
 }
 
 /**
   * @brief  Enables or disables the specified I2C dual addressing mode.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C dual addressing mode.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_DualAddressCmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_DualAddressCmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable dual addressing mode */
-    Instance->OAR2 |= I2C_OAR2_ENDUAL;
+    I2Cx->OAR2 |= I2C_OAR2_ENDUAL;
   }
   else
   {
     /* Disable dual addressing mode */
-    Instance->OAR2 &= (uint16_t)~((uint16_t)I2C_OAR2_ENDUAL);
+    I2Cx->OAR2 &= (uint16_t)~((uint16_t)I2C_OAR2_ENDUAL);
   }
 }
 
 /**
   * @brief  Enables or disables the specified I2C general call feature.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C General call.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_GeneralCallCmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_GeneralCallCmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable generall call */
-    Instance->CR1 |= I2C_CR1_ENGC;
+    I2Cx->CR1 |= I2C_CR1_ENGC;
   }
   else
   {
     /* Disable generall call */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_ENGC);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_ENGC);
   }
 }
 
@@ -570,75 +577,75 @@ void I2C_GeneralCallCmd(I2C_TypeDef* Instance, FunctionalState NewState)
   * @brief  Enables or disables the specified I2C software reset.
   * @note   When software reset is enabled, the I2C IOs are released (this can
   *         be useful to recover from bus errors).  
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C software reset.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_SoftwareResetCmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_SoftwareResetCmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Peripheral under reset */
-    Instance->CR1 |= I2C_CR1_SWRST;
+    I2Cx->CR1 |= I2C_CR1_SWRST;
   }
   else
   {
     /* Peripheral not under reset */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_SWRST);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_SWRST);
   }
 }
 
 /**
   * @brief  Enables or disables the specified I2C Clock stretching.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
-  * @param  NewState: new state of the Instance Clock stretching.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  NewState: new state of the I2Cx Clock stretching.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_StretchClockCmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_StretchClockCmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState == DISABLE)
   {
     /* Enable the selected I2C Clock stretching */
-    Instance->CR1 |= I2C_CR1_NOSTRETCH;
+    I2Cx->CR1 |= I2C_CR1_NOSTRETCH;
   }
   else
   {
     /* Disable the selected I2C Clock stretching */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_NOSTRETCH);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_NOSTRETCH);
   }
 }
 
 /**
   * @brief  Selects the specified I2C fast mode duty cycle.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_DutyCycle: specifies the fast mode duty cycle.
   *          This parameter can be one of the following values:
   *            @arg I2C_DutyCycle_2: I2C fast mode Tlow/Thigh = 2
   *            @arg I2C_DutyCycle_16_9: I2C fast mode Tlow/Thigh = 16/9
   * @retval None
   */
-void I2C_FastModeDutyCycleConfig(I2C_TypeDef* Instance, uint16_t I2C_DutyCycle)
+void I2C_FastModeDutyCycleConfig(I2C_TypeDef* I2Cx, uint16_t I2C_DutyCycle)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_DUTY_CYCLE(I2C_DutyCycle));
   if (I2C_DutyCycle != I2C_DutyCycle_16_9)
   {
     /* I2C fast mode Tlow/Thigh=2 */
-    Instance->CCR &= I2C_DutyCycle_2;
+    I2Cx->CCR &= I2C_DutyCycle_2;
   }
   else
   {
     /* I2C fast mode Tlow/Thigh=16/9 */
-    Instance->CCR |= I2C_DutyCycle_16_9;
+    I2Cx->CCR |= I2C_DutyCycle_16_9;
   }
 }
 
@@ -649,7 +656,7 @@ void I2C_FastModeDutyCycleConfig(I2C_TypeDef* Instance, uint16_t I2C_DutyCycle)
   *         should be called (with parameter I2C_NACKPosition_Next) before data 
   *         reception starts,as described in the 2-byte reception procedure 
   *         recommended in Reference Manual in Section: Master receiver.                
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_NACKPosition: specifies the NACK position. 
   *          This parameter can be one of the following values:
   *            @arg I2C_NACKPosition_Next: indicates that the next byte will be the last
@@ -663,72 +670,72 @@ void I2C_FastModeDutyCycleConfig(I2C_TypeDef* Instance, uint16_t I2C_DutyCycle)
   *            
   * @retval None
   */
-void I2C_NACKPositionConfig(I2C_TypeDef* Instance, uint16_t I2C_NACKPosition)
+void I2C_NACKPositionConfig(I2C_TypeDef* I2Cx, uint16_t I2C_NACKPosition)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_NACK_POSITION(I2C_NACKPosition));
   
   /* Check the input parameter */
   if (I2C_NACKPosition == I2C_NACKPosition_Next)
   {
     /* Next byte in shift register is the last received byte */
-    Instance->CR1 |= I2C_NACKPosition_Next;
+    I2Cx->CR1 |= I2C_NACKPosition_Next;
   }
   else
   {
     /* Current byte in shift register is the last received byte */
-    Instance->CR1 &= I2C_NACKPosition_Current;
+    I2Cx->CR1 &= I2C_NACKPosition_Current;
   }
 }
 
 /**
   * @brief  Drives the SMBusAlert pin high or low for the specified I2C.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_SMBusAlert: specifies SMBAlert pin level. 
   *          This parameter can be one of the following values:
   *            @arg I2C_SMBusAlert_Low: SMBAlert pin driven low
   *            @arg I2C_SMBusAlert_High: SMBAlert pin driven high
   * @retval None
   */
-void I2C_SMBusAlertConfig(I2C_TypeDef* Instance, uint16_t I2C_SMBusAlert)
+void I2C_SMBusAlertConfig(I2C_TypeDef* I2Cx, uint16_t I2C_SMBusAlert)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_SMBUS_ALERT(I2C_SMBusAlert));
   if (I2C_SMBusAlert == I2C_SMBusAlert_Low)
   {
     /* Drive the SMBusAlert pin Low */
-    Instance->CR1 |= I2C_SMBusAlert_Low;
+    I2Cx->CR1 |= I2C_SMBusAlert_Low;
   }
   else
   {
     /* Drive the SMBusAlert pin High  */
-    Instance->CR1 &= I2C_SMBusAlert_High;
+    I2Cx->CR1 &= I2C_SMBusAlert_High;
   }
 }
 
 /**
   * @brief  Enables or disables the specified I2C ARP.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
-  * @param  NewState: new state of the Instance ARP.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  NewState: new state of the I2Cx ARP. 
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_ARPCmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_ARPCmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable the selected I2C ARP */
-    Instance->CR1 |= I2C_CR1_ENARP;
+    I2Cx->CR1 |= I2C_CR1_ENARP;
   }
   else
   {
     /* Disable the selected I2C ARP */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_ENARP);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_ENARP);
   }
 }
 /**
@@ -748,30 +755,30 @@ void I2C_ARPCmd(I2C_TypeDef* Instance, FunctionalState NewState)
   */
 
 /**
-  * @brief  Sends a data byte through the Instance peripheral.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @brief  Sends a data byte through the I2Cx peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  Data: Byte to be transmitted..
   * @retval None
   */
-void I2C_SendData(I2C_TypeDef* Instance, uint8_t Data)
+void I2C_SendData(I2C_TypeDef* I2Cx, uint8_t Data)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   /* Write in the DR register the data to be sent */
-  Instance->DR = Data;
+  I2Cx->DR = Data;
 }
 
 /**
-  * @brief  Returns the most recent received data by the Instance peripheral.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @brief  Returns the most recent received data by the I2Cx peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @retval The value of the received data.
   */
-uint8_t I2C_ReceiveData(I2C_TypeDef* Instance)
+uint8_t I2C_ReceiveData(I2C_TypeDef* I2Cx)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   /* Return the data in the DR register */
-  return (uint8_t)Instance->DR;
+  return (uint8_t)I2Cx->DR;
 }
 
 /**
@@ -792,31 +799,31 @@ uint8_t I2C_ReceiveData(I2C_TypeDef* Instance)
 
 /**
   * @brief  Enables or disables the specified I2C PEC transfer.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C PEC transmission.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_TransmitPEC(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_TransmitPEC(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable the selected I2C PEC transmission */
-    Instance->CR1 |= I2C_CR1_PEC;
+    I2Cx->CR1 |= I2C_CR1_PEC;
   }
   else
   {
     /* Disable the selected I2C PEC transmission */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_PEC);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_PEC);
   }
 }
 
 /**
   * @brief  Selects the specified I2C PEC position.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_PECPosition: specifies the PEC position. 
   *          This parameter can be one of the following values:
   *            @arg I2C_PECPosition_Next: indicates that the next byte is PEC
@@ -828,58 +835,58 @@ void I2C_TransmitPEC(I2C_TypeDef* Instance, FunctionalState NewState)
   *                
   * @retval None
   */
-void I2C_PECPositionConfig(I2C_TypeDef* Instance, uint16_t I2C_PECPosition)
+void I2C_PECPositionConfig(I2C_TypeDef* I2Cx, uint16_t I2C_PECPosition)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_PEC_POSITION(I2C_PECPosition));
   if (I2C_PECPosition == I2C_PECPosition_Next)
   {
     /* Next byte in shift register is PEC */
-    Instance->CR1 |= I2C_PECPosition_Next;
+    I2Cx->CR1 |= I2C_PECPosition_Next;
   }
   else
   {
     /* Current byte in shift register is PEC */
-    Instance->CR1 &= I2C_PECPosition_Current;
+    I2Cx->CR1 &= I2C_PECPosition_Current;
   }
 }
 
 /**
   * @brief  Enables or disables the PEC value calculation of the transferred bytes.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
-  * @param  NewState: new state of the Instance PEC value calculation.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  NewState: new state of the I2Cx PEC value calculation.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_CalculatePEC(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_CalculatePEC(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable the selected I2C PEC calculation */
-    Instance->CR1 |= I2C_CR1_ENPEC;
+    I2Cx->CR1 |= I2C_CR1_ENPEC;
   }
   else
   {
     /* Disable the selected I2C PEC calculation */
-    Instance->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_ENPEC);
+    I2Cx->CR1 &= (uint16_t)~((uint16_t)I2C_CR1_ENPEC);
   }
 }
 
 /**
   * @brief  Returns the PEC value for the specified I2C.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @retval The PEC value.
   */
-uint8_t I2C_GetPEC(I2C_TypeDef* Instance)
+uint8_t I2C_GetPEC(I2C_TypeDef* I2Cx)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   /* Return the selected I2C PEC value */
-  return ((Instance->SR2) >> 8);
+  return ((I2Cx->SR2) >> 8);
 }
 
 /**
@@ -887,64 +894,64 @@ uint8_t I2C_GetPEC(I2C_TypeDef* Instance)
   */
 
 /** @defgroup I2C_Group4 DMA transfers management functions
- *  @brief   DMA transfers management functions 
+ *  @brief   DMA transfers management functions
  *
-@verbatim   
+@verbatim
  ===============================================================================
                 ##### DMA transfers management functions #####
- ===============================================================================  
-  This section provides functions allowing to configure the I2C DMA channels 
+ ===============================================================================
+  This section provides functions allowing to configure the I2C DMA channels
   requests.
-  
+
 @endverbatim
   * @{
   */
 
 /**
   * @brief  Enables or disables the specified I2C DMA requests.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C DMA transfer.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_DMACmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_DMACmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Enable the selected I2C DMA requests */
-    Instance->CR2 |= I2C_CR2_DMAEN;
+    I2Cx->CR2 |= I2C_CR2_DMAEN;
   }
   else
   {
     /* Disable the selected I2C DMA requests */
-    Instance->CR2 &= (uint16_t)~((uint16_t)I2C_CR2_DMAEN);
+    I2Cx->CR2 &= (uint16_t)~((uint16_t)I2C_CR2_DMAEN);
   }
 }
 
 /**
   * @brief  Specifies that the next DMA transfer is the last one.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  NewState: new state of the I2C DMA last transfer.
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-void I2C_DMALastTransferCmd(I2C_TypeDef* Instance, FunctionalState NewState)
+void I2C_DMALastTransferCmd(I2C_TypeDef* I2Cx, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   if (NewState != DISABLE)
   {
     /* Next DMA transfer is the last transfer */
-    Instance->CR2 |= I2C_CR2_LAST;
+    I2Cx->CR2 |= I2C_CR2_LAST;
   }
   else
   {
     /* Next DMA transfer is not the last transfer */
-    Instance->CR2 &= (uint16_t)~((uint16_t)I2C_CR2_LAST);
+    I2Cx->CR2 &= (uint16_t)~((uint16_t)I2C_CR2_LAST);
   }
 }
 
@@ -995,10 +1002,10 @@ void I2C_DMALastTransferCmd(I2C_TypeDef* Instance, FunctionalState NewState)
          
      -@@- For error management, it is advised to use the following functions:
         (+@@) I2C_ITConfig() to configure and enable the error interrupts (I2C_IT_ERR).
-        (+@@) Instance_ER_IRQHandler() which is called when the error interrupt occurs.
+        (+@@) I2Cx_ER_IRQHandler() which is called when the error interrupt occurs.
               Where x is the peripheral instance (I2C1, I2C2 ...)
         (+@@) I2C_GetFlagStatus() or I2C_GetITStatus()  to be called into the 
-              Instance_ER_IRQHandler() function in order to determine which error occurred.
+              I2Cx_ER_IRQHandler() function in order to determine which error occurred.
         (+@@) I2C_ClearFlag() or I2C_ClearITPendingBit() and/or I2C_SoftwareResetCmd() 
               and/or I2C_GenerateStop() in order to clear the error flag and source 
               and return to correct  communication status.
@@ -1069,15 +1076,15 @@ void I2C_DMALastTransferCmd(I2C_TypeDef* Instance, FunctionalState NewState)
   *            @arg I2C_Register_TRISE: TRISE register.
   * @retval The value of the read register.
   */
-uint16_t I2C_ReadRegister(I2C_TypeDef* Instance, uint8_t I2C_Register)
+uint16_t I2C_ReadRegister(I2C_TypeDef* I2Cx, uint8_t I2C_Register)
 {
   __IO uint32_t tmp = 0;
 
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_REGISTER(I2C_Register));
 
-  tmp = (uint32_t) Instance;
+  tmp = (uint32_t) I2Cx;
   tmp += I2C_Register;
 
   /* Return the selected register value */
@@ -1086,7 +1093,7 @@ uint16_t I2C_ReadRegister(I2C_TypeDef* Instance, uint8_t I2C_Register)
 
 /**
   * @brief  Enables or disables the specified I2C interrupts.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_IT: specifies the I2C interrupts sources to be enabled or disabled. 
   *          This parameter can be any combination of the following values:
   *            @arg I2C_IT_BUF: Buffer interrupt mask
@@ -1096,27 +1103,22 @@ uint16_t I2C_ReadRegister(I2C_TypeDef* Instance, uint8_t I2C_Register)
   *          This parameter can be: ENABLE or DISABLE.
   * @retval None
   */
-
-void I2C_ITConfig(I2C_TypeDef* Instance, uint16_t I2C_IT, FunctionalState NewState)
+void I2C_ITConfig(I2C_TypeDef* I2Cx, uint16_t I2C_IT, FunctionalState NewState)
 {
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_FUNCTIONAL_STATE(NewState));
   assert_param(IS_I2C_CONFIG_IT(I2C_IT));
-
+  
   if (NewState != DISABLE)
   {
     /* Enable the selected I2C interrupts */
-
-    Instance->CR2 |= I2C_IT;
-
+    I2Cx->CR2 |= I2C_IT;
   }
   else
   {
     /* Disable the selected I2C interrupts */
-
-    Instance->CR2 &= (uint16_t)~I2C_IT;
-
+    I2Cx->CR2 &= (uint16_t)~I2C_IT;
   }
 }
 
@@ -1127,9 +1129,9 @@ void I2C_ITConfig(I2C_TypeDef* Instance, uint16_t I2C_IT, FunctionalState NewSta
  */
 
 /**
-  * @brief  Checks whether the last Instance Event is equal to the one passed
+  * @brief  Checks whether the last I2Cx Event is equal to the one passed
   *         as parameter.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_EVENT: specifies the event to be checked. 
   *          This parameter can be one of the following values:
   *            @arg I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED: EV1
@@ -1160,19 +1162,19 @@ void I2C_ITConfig(I2C_TypeDef* Instance, uint16_t I2C_IT, FunctionalState NewSta
   *           - SUCCESS: Last event is equal to the I2C_EVENT
   *           - ERROR: Last event is different from the I2C_EVENT
   */
-ErrorStatus I2C_CheckEvent(I2C_TypeDef* Instance, uint32_t I2C_EVENT)
+ErrorStatus I2C_CheckEvent(I2C_TypeDef* I2Cx, uint32_t I2C_EVENT)
 {
   uint32_t lastevent = 0;
   uint32_t flag1 = 0, flag2 = 0;
   ErrorStatus status = ERROR;
 
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_EVENT(I2C_EVENT));
 
-  /* Read the Instance status register */
-  flag1 = Instance->SR1;
-  flag2 = Instance->SR2;
+  /* Read the I2Cx status register */
+  flag1 = I2Cx->SR1;
+  flag2 = I2Cx->SR2;
   flag2 = flag2 << 16;
 
   /* Get the last event value from I2C status register */
@@ -1183,7 +1185,6 @@ ErrorStatus I2C_CheckEvent(I2C_TypeDef* Instance, uint32_t I2C_EVENT)
   {
     /* SUCCESS: last event is equal to I2C_EVENT */
     status = SUCCESS;
-
   }
   else
   {
@@ -1201,25 +1202,25 @@ ErrorStatus I2C_CheckEvent(I2C_TypeDef* Instance, uint32_t I2C_EVENT)
  */
 
 /**
-  * @brief  Returns the last Instance Event.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @brief  Returns the last I2Cx Event.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   *     
   * @note   For detailed description of Events, please refer to section I2C_Events
   *         in stm32f4xx_i2c.h file.
   *    
   * @retval The last event
   */
-uint32_t I2C_GetLastEvent(I2C_TypeDef* Instance)
+uint32_t I2C_GetLastEvent(I2C_TypeDef* I2Cx)
 {
   uint32_t lastevent = 0;
   uint32_t flag1 = 0, flag2 = 0;
 
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
 
-  /* Read the Instance status register */
-  flag1 = Instance->SR1;
-  flag2 = Instance->SR2;
+  /* Read the I2Cx status register */
+  flag1 = I2Cx->SR1;
+  flag2 = I2Cx->SR2;
   flag2 = flag2 << 16;
 
   /* Get the last event value from I2C status register */
@@ -1237,7 +1238,7 @@ uint32_t I2C_GetLastEvent(I2C_TypeDef* Instance)
 
 /**
   * @brief  Checks whether the specified I2C flag is set or not.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_FLAG: specifies the flag to check. 
   *          This parameter can be one of the following values:
   *            @arg I2C_FLAG_DUALF: Dual flag (Slave mode)
@@ -1264,17 +1265,17 @@ uint32_t I2C_GetLastEvent(I2C_TypeDef* Instance)
   *            @arg I2C_FLAG_SB: Start bit flag (Master mode)
   * @retval The new state of I2C_FLAG (SET or RESET).
   */
-FlagStatus I2C_GetFlagStatus(I2C_TypeDef* Instance, uint32_t I2C_FLAG)
+FlagStatus I2C_GetFlagStatus(I2C_TypeDef* I2Cx, uint32_t I2C_FLAG)
 {
   FlagStatus bitstatus = RESET;
-  __IO uint32_t i2creg = 0, Instancebase = 0;
+  __IO uint32_t i2creg = 0, i2cxbase = 0;
 
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_GET_FLAG(I2C_FLAG));
 
-  /* Get the Instance peripheral base address */
-  Instancebase = (uint32_t)Instance;
+  /* Get the I2Cx peripheral base address */
+  i2cxbase = (uint32_t)I2Cx;
   
   /* Read flag register index */
   i2creg = I2C_FLAG >> 28;
@@ -1284,18 +1285,18 @@ FlagStatus I2C_GetFlagStatus(I2C_TypeDef* Instance, uint32_t I2C_FLAG)
   
   if(i2creg != 0)
   {
-    /* Get the Instance SR1 register address */
-    Instancebase += 0x14;
+    /* Get the I2Cx SR1 register address */
+    i2cxbase += 0x14;
   }
   else
   {
-    /* Flag in Instance SR2 Register */
+    /* Flag in I2Cx SR2 Register */
     I2C_FLAG = (uint32_t)(I2C_FLAG >> 16);
-    /* Get the Instance SR2 register address */
-    Instancebase += 0x18;
+    /* Get the I2Cx SR2 register address */
+    i2cxbase += 0x18;
   }
   
-  if(((*(__IO uint32_t *)Instancebase) & I2C_FLAG) != (uint32_t)RESET)
+  if(((*(__IO uint32_t *)i2cxbase) & I2C_FLAG) != (uint32_t)RESET)
   {
     /* I2C_FLAG is set */
     bitstatus = SET;
@@ -1311,8 +1312,8 @@ FlagStatus I2C_GetFlagStatus(I2C_TypeDef* Instance, uint32_t I2C_FLAG)
 }
 
 /**
-  * @brief  Clears the Instance's pending flags.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @brief  Clears the I2Cx's pending flags.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_FLAG: specifies the flag to clear. 
   *          This parameter can be any combination of the following values:
   *            @arg I2C_FLAG_SMBALERT: SMBus Alert flag
@@ -1334,28 +1335,28 @@ FlagStatus I2C_GetFlagStatus(I2C_TypeDef* Instance, uint32_t I2C_FLAG)
   *          read/write to I2C_DR register (I2C_SendData()).
   * @note   ADDR (Address sent) is cleared by software sequence: a read operation to 
   *          I2C_SR1 register (I2C_GetFlagStatus()) followed by a read operation to 
-  *          I2C_SR2 register ((void)(Instance->SR2)).
+  *          I2C_SR2 register ((void)(I2Cx->SR2)).
   * @note   SB (Start Bit) is cleared software sequence: a read operation to I2C_SR1
   *          register (I2C_GetFlagStatus()) followed by a write operation to I2C_DR
   *          register (I2C_SendData()).
   *  
   * @retval None
   */
-void I2C_ClearFlag(I2C_TypeDef* Instance, uint32_t I2C_FLAG)
+void I2C_ClearFlag(I2C_TypeDef* I2Cx, uint32_t I2C_FLAG)
 {
   uint32_t flagpos = 0;
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_CLEAR_FLAG(I2C_FLAG));
   /* Get the I2C flag position */
   flagpos = I2C_FLAG & FLAG_MASK;
   /* Clear the selected I2C flag */
-  Instance->SR1 = (uint16_t)~flagpos;
+  I2Cx->SR1 = (uint16_t)~flagpos;
 }
 
 /**
   * @brief  Checks whether the specified I2C interrupt has occurred or not.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_IT: specifies the interrupt source to check. 
   *          This parameter can be one of the following values:
   *            @arg I2C_IT_SMBALERT: SMBus Alert flag
@@ -1375,23 +1376,23 @@ void I2C_ClearFlag(I2C_TypeDef* Instance, uint32_t I2C_FLAG)
   *            @arg I2C_IT_SB: Start bit flag (Master mode)
   * @retval The new state of I2C_IT (SET or RESET).
   */
-ITStatus I2C_GetITStatus(I2C_TypeDef* Instance, uint32_t I2C_IT)
+ITStatus I2C_GetITStatus(I2C_TypeDef* I2Cx, uint32_t I2C_IT)
 {
   ITStatus bitstatus = RESET;
   uint32_t enablestatus = 0;
 
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_GET_IT(I2C_IT));
 
   /* Check if the interrupt source is enabled or not */
-  enablestatus = (uint32_t)(((I2C_IT & ITEN_MASK) >> 16) & (Instance->CR2)) ;
+  enablestatus = (uint32_t)(((I2C_IT & ITEN_MASK) >> 16) & (I2Cx->CR2)) ;
   
   /* Get bit[23:0] of the flag */
   I2C_IT &= FLAG_MASK;
 
   /* Check the status of the specified I2C flag */
-  if (((Instance->SR1 & I2C_IT) != (uint32_t)RESET) && enablestatus)
+  if (((I2Cx->SR1 & I2C_IT) != (uint32_t)RESET) && enablestatus)
   {
     /* I2C_IT is set */
     bitstatus = SET;
@@ -1406,8 +1407,8 @@ ITStatus I2C_GetITStatus(I2C_TypeDef* Instance, uint32_t I2C_IT)
 }
 
 /**
-  * @brief  Clears the Instance's interrupt pending bits.
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
+  * @brief  Clears the I2Cx's interrupt pending bits.
+  * @param  I2Cx: where x can be 1, 2 or 3 to select the I2C peripheral.
   * @param  I2C_IT: specifies the interrupt pending bit to clear. 
   *          This parameter can be any combination of the following values:
   *            @arg I2C_IT_SMBALERT: SMBus Alert interrupt
@@ -1429,503 +1430,583 @@ ITStatus I2C_GetITStatus(I2C_TypeDef* Instance, uint32_t I2C_IT)
   *          read/write to I2C_DR register (I2C_SendData()).
   * @note   ADDR (Address sent) is cleared by software sequence: a read operation to 
   *          I2C_SR1 register (I2C_GetITStatus()) followed by a read operation to 
-  *          I2C_SR2 register ((void)(Instance->SR2)).
+  *          I2C_SR2 register ((void)(I2Cx->SR2)).
   * @note   SB (Start Bit) is cleared by software sequence: a read operation to 
   *          I2C_SR1 register (I2C_GetITStatus()) followed by a write operation to 
   *          I2C_DR register (I2C_SendData()).
   * @retval None
   */
-void I2C_ClearITPendingBit(I2C_TypeDef* Instance, uint32_t I2C_IT)
+void I2C_ClearITPendingBit(I2C_TypeDef* I2Cx, uint32_t I2C_IT)
 {
   uint32_t flagpos = 0;
   /* Check the parameters */
-  assert_param(IS_I2C_ALL_PERIPH(Instance));
+  assert_param(IS_I2C_ALL_PERIPH(I2Cx));
   assert_param(IS_I2C_CLEAR_IT(I2C_IT));
 
   /* Get the I2C flag position */
   flagpos = I2C_IT & FLAG_MASK;
 
   /* Clear the selected I2C flag */
-  Instance->SR1 = (uint16_t)~flagpos;
+  I2Cx->SR1 = (uint16_t)~flagpos;
 }
 
-/**********************************************************************************************************
- * 												Added Functions	for Pulling 						 	  *
- **********************************************************************************************************/
 /**
- * @brief  Writes to slave
- * @param  *I2Cx: I2C used
- * @param  data: data to be sent
- * @retval None
- * @note   For private use
- */
- uint8_t I2C_WriteData(i2c_handle_t *handle, uint8_t data)
-{
-	/* Send I2C1 location address LSB */
-	handle->Instance->DR = data;
-	/* Test on I2C1 EV8 and clear it */
-	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-	while(!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
-	{
-	  /* If the timeout delay is exeeded, exit with error code */
-		if ((I2C_Timeout--) == 0)
-				return 0xFF;
-	}
-	return 0;
-}
+  * @}
+  */
+
 /**
- * @brief  I2C Start condition
- * @param  *I2Cx: I2C used
- * @param  address: slave address
- * @param  direction: master to slave or slave to master
- * @retval Start condition status
- * @note   For private use
- */
- int16_t I2C_Start(i2c_handle_t *handle, uint8_t address, uint8_t direction)
-{
-		I2C_GenerateSTART(handle->Instance,ENABLE);
-		/* Test on I2C1 EV5 and clear it */
-		I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-		while(!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_MODE_SELECT))
-		{
-		    /* If the timeout delay is exceeded, exit with error code */
-			if ((I2C_Timeout--) == 0)
-				return 0xFF;
-		 }
-		/* Send write/read bit */
-		if (direction == I2C_Direction_Transmitter) {
-			/* Send address with zero last bit */
-			I2C_Send7bitAddress(handle->Instance,address,I2C_Direction_Transmitter);
-			/* Test on I2C1 EV6 and clear it */
-			I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-			while(!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED))
-			{
-				/* If the timeout delay is exceeded, exit with error code */
-				if ((I2C_Timeout--) == 0)
-					return 0xFF;
-			}
+  * @}
+  */ 
 
-
-		}
-		if (direction == I2C_Direction_Receiver) {
-			/* Send address with one last bit */
-			I2C_Send7bitAddress(handle->Instance,address,I2C_Direction_Receiver);
-			/* Initialize timeout value */
-			I2C_Timeout = I2C_TIMEOUT_MAX;
-			/* Test on I2C1 EV6 and clear it */
-			while(!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED ))
-			{
-				/* If the timeout delay is exceeded, exit with error code */
-				if ((I2C_Timeout--) == 0)
-					return 0xFF;
-			}
-		}
-		/* Read status register to clear ADDR flag */
-		handle->Instance->SR1;
-		handle->Instance->SR2;
-		return 0;
-}
 /**
- * @brief  Checks if device is connected to I2C bus
- * @param  *handle->Instance: I2C used
- * @param  address: 7 bit slave address, left aligned, bits 7:1 are used, LSB bit is not used
- * @retval Device status:
- *            - 0: Device is not connected
- *            - > 1: Device is connected
- */
-uint8_t I2C_IsDeviceConnected(i2c_handle_t *handle, uint8_t address) {
-	uint8_t connected = 0;
-	/* Try to start, function will return 0 in case device will send ACK */
-	if (!I2C_Start(handle, address, I2C_Direction_Transmitter)) {
-		connected = 1;
-	}
+  * @}
+  */ 
 
-	/* STOP I2C */
-	I2C_GenerateSTOP(handle->Instance,ENABLE);
-
-	/* Return status */
-	return connected;
-}
 /**
- * @brief  Reads byte without Nack
- * @param  *handle->Instance: I2C used
- * @retval Byte from slave
- * @
+  * @}
+  */ 
+
+/***************************************************************************************************
+ * 									ADDED Function
+ *
+ * *************************************************************************************************
  */
-
-uint8_t I2C_ReadNack(i2c_handle_t *handle) {
-	uint8_t data;
-
-	/* Disable ACK */
-	I2C_AcknowledgeConfig(handle->Instance,DISABLE);
-
-	/* Generate stop */
-	I2C_GenerateSTOP(handle->Instance,ENABLE);
-
-	/* Wait till received */
-	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-	while (!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_BYTE_RECEIVED)) {
-		/* If the timeout delay is exceeded, exit with error code */
-		if ((I2C_Timeout--) == 0)
-			return 0xFF;
-	}
-
-	/* Read data */
-	data = handle->Instance->DR;
-
-	/* Return data */
-	return data;
-}
-/**
- * @brief  Reads byte with ack
- * @param  *I2Cx: I2C used
- * @retval Byte from slave
- * @note   For private use
- */
-uint8_t I2C_ReadAck(i2c_handle_t *handle) {
-	uint8_t data;
-
-	/* Enable ACK */
-	I2C_AcknowledgeConfig(handle->Instance,ENABLE);
-	/* Wait till not received */
-	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-	while (!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_BYTE_RECEIVED)) {
-		/* If the timeout delay is exceeded, exit with error code */
-		if ((I2C_Timeout--) == 0)
-			return 0xFF;
-	}
-	/* Read data */
-	data = handle->Instance->DR;
-
-	/* Return data */
-	return data;
-}
-/**********************************************************************************************************
- * 												Added Functions	for interrupt 						  *
- **********************************************************************************************************/
 /**
   * @brief  Clears the Instance's Addr flag.
   * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
   *
   */
-void clear_addr_flag(I2C_TypeDef *Instance)
+static void I2C_Clear_Addr_Flag(I2C_HandleTypeDef *hi2c)
 {
-	uint16_t val;
-	val = Instance->SR1;
-	val = Instance->SR2;
-
+	(void)hi2c->Instance->SR1;
+	(void)hi2c->Instance->SR2;
 }
 /**
-  * @brief  Checks if bus is busy or not
-  * @param  Instance: where x can be 1, 2 or 3 to select the I2C peripheral.
-  *
-  */
-uint8_t is_bus_busy(I2C_TypeDef *Instance)
-{
-	if(Instance->SR2 & I2C_FLAG_BUSY )
-		return 1;
-	else
-		return 0;
-}
-/**
- * @brief  Checks if device is connected to I2C bus
- * @param  *Instance: I2C used
- * @param  address: 7 bit slave address, left aligned, bits 7:1 are used, LSB bit is not used
- * @retval Device status:
- *            - 0: Device is not connected
- *            - > 0: Device is connected
- */
-/*
-uint8_t I2C_IsDeviceConnected(I2C_TypeDef* Instance, uint8_t address) {
-	uint8_t connected = 0;
-	 Try to start, function will return 0 in case device will send ACK
-	if (!I2C_Start(Instance, address, I2C_TRANSMITTER_MODE)) {
-		connected = 1;
-	}
-*/
-
-	/* STOP I2C */
-/*	I2C_GenerateSTOP(Instance,ENABLE);
-
-	 Return status
-	return connected;
-}*/
-
-
-/**
-  *@brief master transmits data
-  *@param  handle: pointer to a i2c_handle_t structure that contains
-  *        the configuration information for the specified I2C peripheral.
-  *
-  *@param slave_address:contain slave address or Register  address
-  *@param buffer : pointer to char to data to be trasmitted
-  *@param len: number of bytes to be transmitted
-  *@note :	handle->Instance :where x can be 1, 2 or 3 to select the I2C peripheral.
-  *@note : return to be modified
-  */
-/*uint8_t i2c_wait_untill_addr_set(I2C_TypeDef *i2cx)
-{
-	//EV6: ADDR=1, cleared by reading SR1 register followed by reading SR2.
-
-	if (i2cx->SR1 & I2C_FLAG_ADDR )
-	{
-		return 1 ;
-	}
-	return 0;
-}*/
-void hal_i2c_master_tx(i2c_handle_t *handle, uint8_t slave_address, uint8_t *buffer, uint32_t len)
-{
-
-	/*Enable I2C*/
-	I2C_Cmd(handle->Instance,ENABLE);
-	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-	/*check if bus is busy */
-	while(is_bus_busy(handle->Instance) ){
-		 /* If the timeout delay is exeeded, exit with error code */
-
-		if ((I2C_Timeout--) == 0)
-			/*to work on the return type */
-			return ;
-
-	}
-
-	/* Disable Pos *//*Check if needed */
-	//handle->Instance->CR1 &= ~I2C_CR1_POS;
-	handle->State = HAL_I2C_STATE_BUSY_TX;
-
-	handle->pBuffPtr =buffer;/*pointer to store data */
-	handle->XferCount=len;/*num of bytes to be transmitted  */
-	handle->XferSize =len;/*counter */
-	/* Generate start*/
-	I2C_GenerateSTART(handle->Instance,ENABLE);
-	/* Test on I2C1 EV5 and clear it */
-	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-	while(!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_MODE_SELECT))
-	{
-
-		 //If the timeout delay is exceeded, exit with error code
-		if ((I2C_Timeout--) == 0)
-			return;
-	 }
-
-	/* Send address with zero last bit */
-	I2C_Send7bitAddress(handle->Instance,slave_address,I2C_Direction_Transmitter);
-
-	/* Test on I2C1 EV6 and clear it */
-	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-	while(!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED))
-	{
-
-		// If the timeout delay is exceeded, exit with error code
-		if ((I2C_Timeout--) == 0){
-
-			return;
-		}
-	}
-
-
-	clear_addr_flag(handle->Instance); // IS THIS really needed ?? to be checked
-	/* enable the buff, err , event interrupts */
-	/* enable the buff, err , event interrupts */
-
-	I2C_ITConfig(handle->Instance,I2C_IT_BUF|I2C_IT_EVT|I2C_IT_ERR,ENABLE);
-
-	__enable_irq();
-
-}
-
-/**
-  *@brief master transmits data
-  *@param  handle: pointer to a i2c_handle_t structure that contains
-  *        the configuration information for the specified I2C peripheral.
-  *
-  *@param slave_address:contain slave address or Register  address
-  *@param buffer : pointer to char to store data receive
-  *@param len: number of bytes to be received
-  *@note :	handle->Instance :where x can be 1, 2 or 3 to select the I2C peripheral.
-  *@note : return to be modified
-  *@note
-  */
-
-void hal_i2c_master_rx(i2c_handle_t *handle, uint8_t slave_adr,uint8_t *buffer, uint32_t len)
-{
-	/*Enable I2C*/
-	I2C_Cmd(handle->Instance,ENABLE);
-	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-	/*check if bus is busy */
-	while(is_bus_busy(handle->Instance) ){
-		/* If the timeout delay is exeeded, exit with error code */
-		if ((I2C_Timeout--) == 0)
-			/*to work on the return type */
-
-			return ;
-		}
-
-		/* Disable Pos *//*Check if needed */
-		//handle->Instance->CR1 &= ~I2C_CR1_POS;
-	handle->State = HAL_I2C_STATE_BUSY_RX;
-
-	handle->pBuffPtr = buffer;
-	handle->XferCount = len;
-	handle->XferSize = len;
-
-	I2C_AcknowledgeConfig(handle->Instance,ENABLE);
-	/* Generate start*/
-	I2C_GenerateSTART(handle->Instance,ENABLE);
-	/* Test on I2C1 EV5 and clear it */
-	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-
-	while(!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_MODE_SELECT))
-	{
-			/* If the timeout delay is exceeded, exit with error code */
-		if ((I2C_Timeout--) == 0)
-			return;
-	}
-
-	/* Send address with one last bit */
-	I2C_Send7bitAddress(handle->Instance,slave_adr,I2C_Direction_Receiver);
-	/* Initialize timeout value */
-	I2C_Timeout = I2C_TIMEOUT_MAX;
-
-	/* Test on I2C1 EV6 and clear it */
-	while(!I2C_CheckEvent(handle->Instance, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED ))
-	{
-		/* If the timeout delay is exceeded, exit with error code */
-
-		if ((I2C_Timeout--) == 0)
-			return ;
-	}
-
-	clear_addr_flag(handle->Instance); /* IS THIS really needed ??*/
-	/* enable the buff, err , event interrupts */
-
-	I2C_ITConfig(handle->Instance,I2C_IT_BUF|I2C_IT_EVT|I2C_IT_ERR,ENABLE);
-	__enable_irq();
-
-
-}
-void hal_i2c_slave_tx(i2c_handle_t *handle, uint8_t *buffer, uint32_t len)
-{
-}
-void hal_i2c_slave_rx(i2c_handle_t *handle, uint8_t *buffer, uint32_t len)
-{
-}
-
-/*							Handler Functions					*/
-/**
-  * @brief  Handle TXE flag for Master
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
+  * @brief  This function handles Acknowledge failed detection during an I2C Communication.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
   * @retval HAL status
   */
-static void I2C_MasterTransmit_TXE(i2c_handle_t *hi2c)
+static HAL_StatusTypeDef I2C_IsAcknowledgeFailed(I2C_HandleTypeDef *hi2c)
 {
-	if(hi2c->XferCount == 0)
-	 {
-
-		  return;
-	 }
-
-  /* Write data to DR */
-  hi2c->Instance->DR= (*hi2c->pBuffPtr++);
-  hi2c->XferCount--;
-
-
-}
-/**
-  * @brief  Handle BTF flag for Master transmitter
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
-  * @retval HAL status
-  */
-static void I2C_MasterTransmit_BTF(i2c_handle_t *hi2c)
-{
-
-  if(hi2c->XferCount != 0)
+  if (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_AF) == SET)
   {
+    /* Clear NACKF Flag */
+    I2C_ClearFlag(hi2c->Instance,I2C_FLAG_AF);
+    hi2c->State               = HAL_I2C_STATE_READY;
+    hi2c->Mode                = HAL_I2C_MODE_NONE;
+    hi2c->ErrorCode           |= HAL_I2C_ERROR_AF;
 
-    /* Write data to DR */
-    hi2c->Instance->DR = (*hi2c->pBuffPtr++);
-    hi2c->XferCount--;
-
+    return HAL_ERROR;
   }
-  else
+  return HAL_OK;
+}
+/**
+  * @brief  This function handles I2C Communication Timeout.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @param  Flag specifies the I2C flag to check.
+  * @retval HAL status
+  */
+static HAL_StatusTypeDef I2C_WaitOnFlagUntilTimeout(I2C_HandleTypeDef *hi2c, uint32_t Flag,FlagStatus Status)
+{
+
+  uint32_t I2C_Timeout;
+  /* Wait until flag is set */
+  I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+  while (I2C_GetFlagStatus(hi2c->Instance,Flag)==Status)
   {
-
-
-    /* Disable EVT, BUF and ERR interrupt */
-	  I2C_ITConfig(hi2c->Instance,I2C_IT_BUF|I2C_IT_EVT|I2C_IT_ERR,DISABLE);
-
-    /* Generate Stop */
-	  I2C_GenerateSTOP(hi2c->Instance,ENABLE);
-
-    if(hi2c->State == HAL_I2C_STATE_MEM_BUSY_TX)
+	  /* If the timeout delay is exeeded, exit with error code */
+	if ((I2C_Timeout--) == 0)
     {
-      hi2c->State = HAL_I2C_STATE_READY;
+        hi2c->State             = HAL_I2C_STATE_READY;
+        hi2c->Mode              = HAL_I2C_MODE_NONE;
+        hi2c->ErrorCode         |= HAL_I2C_ERROR_TIMEOUT;
+        return HAL_ERROR;
+     }
+   }
+  return HAL_OK;
+}
+/**
+  * @brief  This function handles I2C Communication Timeout for Master addressing phase.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @param  Flag specifies the I2C flag to check.
+  * @param  Timeout Timeout duration
+  * @param  Tickstart Tick start value
+  * @retval HAL status
+  */
+static HAL_StatusTypeDef I2C_WaitOnMasterAddressFlagUntilTimeout(I2C_HandleTypeDef *hi2c, uint32_t Flag)
+{
+  uint32_t I2C_Timeout;
+  /* Wait until flag is set */
+  I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+  while (!I2C_GetFlagStatus(hi2c->Instance,Flag))
+  {
+    if (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_AF) == SET)
+    {
+      /* Generate Stop */
+      I2C_GenerateSTOP(hi2c->Instance,ENABLE);
 
-      HAL_I2C_MemTxCpltCallback(hi2c);
+      /* Clear AF Flag */
+      I2C_ClearFlag(hi2c->Instance,I2C_FLAG_AF);
+
+      hi2c->State               = HAL_I2C_STATE_READY;
+      hi2c->Mode                = HAL_I2C_MODE_NONE;
+      hi2c->ErrorCode           |= HAL_I2C_ERROR_AF;
+
+      return HAL_ERROR;
     }
-    else
-    {
-      hi2c->State = HAL_I2C_STATE_READY;
 
-      HAL_I2C_MasterTxCpltCallback(hi2c);
-
+    /* Check for the Timeout */
+    if ((I2C_Timeout--) == 0)
+     {
+        hi2c->State               = HAL_I2C_STATE_READY;
+        hi2c->Mode                = HAL_I2C_MODE_NONE;
+        hi2c->ErrorCode           |= HAL_I2C_ERROR_TIMEOUT;
+        return HAL_ERROR;
     }
   }
-
+  return HAL_OK;
 }
 /**
-  * @brief  Handle RXNE flag for Master
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
+  * @brief  This function handles I2C Communication Timeout for specific usage of TXE flag.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @param  Timeout Timeout duration
+  * @param  Tickstart Tick start value
   * @retval HAL status
   */
-static void I2C_MasterReceive_RXNE(i2c_handle_t *hi2c)
+static HAL_StatusTypeDef I2C_WaitOnTXEFlagUntilTimeout(I2C_HandleTypeDef *hi2c)
 {
-  uint32_t tmp = 0;
+	uint32_t I2C_Timeout;
+	  /* Wait until flag is set */
+	I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+	while (!I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_TXE) )
+	{
+		/* Check if a NACK is detected */
+		if (I2C_IsAcknowledgeFailed(hi2c) != HAL_OK)
+		{
+		  return HAL_ERROR;
+		}
 
-  tmp = hi2c->XferCount;
-  if(tmp > 3)
-  {
-    /* Read data from DR */
-    (*hi2c->pBuffPtr++) = hi2c->Instance->DR;
-    hi2c->XferCount--;
-    counter++;
-  }
-  else if((tmp == 2) || (tmp == 3))
-  {
+		/* Check for the Timeout */
+		if ((I2C_Timeout--) == 0)
+		{
 
-	  /* Disable BUF interrupt */
-	  I2C_ITConfig(hi2c->Instance,I2C_IT_BUF,DISABLE);
+			hi2c->State               = HAL_I2C_STATE_READY;
+			hi2c->Mode                = HAL_I2C_MODE_NONE;
+			hi2c->ErrorCode           |= HAL_I2C_ERROR_TIMEOUT;
+
+			/* Process Unlocked */
+			return HAL_ERROR;
+		 }
 
 	  }
-  else
+	  return HAL_OK;
+}
+/**
+  * @brief  This function handles I2C Communication Timeout for specific usage of BTF flag.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @param  Timeout Timeout duration
+  * @param  Tickstart Tick start value
+  * @retval HAL status
+  */
+static HAL_StatusTypeDef I2C_WaitOnBTFFlagUntilTimeout(I2C_HandleTypeDef *hi2c)
+{
+    uint32_t I2C_Timeout;
+		  /* Wait until flag is set */
+    I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+    while (!I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_BTF) )
+	{
+		/* Check if a NACK is detected */
+		if (I2C_IsAcknowledgeFailed(hi2c) != HAL_OK)
+		{
+		  return HAL_ERROR;
+		}
+		/* Check for the Timeout */
+		if ((I2C_Timeout--) == 0)
+		{
+			hi2c->State               = HAL_I2C_STATE_READY;
+			hi2c->Mode                = HAL_I2C_MODE_NONE;
+			hi2c->ErrorCode           |= HAL_I2C_ERROR_TIMEOUT;
+			return HAL_ERROR;
+		}
+	}
+  return HAL_OK;
+}
+/**
+  * @brief  This function handles I2C Communication Timeout for specific usage of RXNE flag.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @param  Timeout Timeout duration
+  * @param  Tickstart Tick start value
+  * @retval HAL status
+  */
+static HAL_StatusTypeDef I2C_WaitOnRXNEFlagUntilTimeout(I2C_HandleTypeDef *hi2c)
+{
+	 uint32_t I2C_Timeout;
+			  /* Wait until flag is set */
+	 I2C_Timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+
+  while (I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_RXNE) == RESET)
   {
-
-
-	  /* Disable EVT, BUF and ERR interrupt */
-	  I2C_ITConfig(hi2c->Instance,I2C_IT_BUF|I2C_IT_EVT|I2C_IT_ERR,DISABLE);
-
-    /* Read data from DR */
-    (*hi2c->pBuffPtr++) = hi2c->Instance->DR;
-    hi2c->XferCount--;
-
-    if(hi2c->State == HAL_I2C_STATE_MEM_BUSY_RX)
+    /* Check if a STOPF is detected */
+    if (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_STOPF) == SET)
     {
-      hi2c->State = HAL_I2C_STATE_READY;
+      /* Clear STOP Flag */
+      I2C_Cmd(hi2c->Instance,ENABLE);
 
-      HAL_I2C_MemRxCpltCallback(hi2c);
+      hi2c->State               = HAL_I2C_STATE_READY;
+      hi2c->Mode                = HAL_I2C_MODE_NONE;
+      hi2c->ErrorCode           |= HAL_I2C_ERROR_NONE;
+
+
+      return HAL_ERROR;
+    }
+
+    /* Check for the Timeout */
+    if ((I2C_Timeout--) == 0)
+    {
+    	hi2c->State               = HAL_I2C_STATE_READY;
+    	hi2c->Mode                = HAL_I2C_MODE_NONE;
+    	hi2c->ErrorCode           |= HAL_I2C_ERROR_TIMEOUT;
+    	return HAL_ERROR;
+    }
+
+  }
+  return HAL_OK;
+}
+/**
+  * @brief  Master sends target device address for read request.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @param  DevAddress Target device address: The device 7 bits address value
+  *         in datasheet must be shifted to the left before calling the interface
+  * @param  Timeout Timeout duration
+  * @param  Tickstart Tick start value
+  * @retval HAL status
+  */
+static HAL_StatusTypeDef I2C_MasterRequestRead(I2C_HandleTypeDef *hi2c, uint16_t DevAddress)
+{
+
+	  /* Enable Acknowledge */
+	I2C_AcknowledgeConfig(hi2c->Instance,ENABLE);
+
+	    /* Generate Start */
+	I2C_GenerateSTART(hi2c->Instance,ENABLE);
+
+
+    /* Wait until SB flag is set */
+    if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_SB,RESET) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+
+
+    I2C_Send7bitAddress(hi2c->Instance,(uint8_t)DevAddress,I2C_Direction_Receiver);
+
+    /* Wait until ADDR flag is set */
+    if (I2C_WaitOnMasterAddressFlagUntilTimeout(hi2c, I2C_FLAG_ADDR) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+
+  return HAL_OK;
+}
+/**
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @param  DevAddress Target device address: The device 7 bits address value
+  *         in datasheet must be shifted to the left before calling the interface
+  * @param  Timeout Timeout duration
+  * @param  Tickstart Tick start value
+  * @retval HAL status
+  */
+static HAL_StatusTypeDef I2C_MasterRequestWrite(I2C_HandleTypeDef *hi2c,uint16_t DevAddress)
+{
+
+
+	  /* Enable Acknowledge */
+		I2C_AcknowledgeConfig(hi2c->Instance,ENABLE);
+
+		    /* Generate Start */
+		I2C_GenerateSTART(hi2c->Instance,ENABLE);
+
+
+	    /* Wait until SB flag is set */
+	    if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_SB,RESET) != HAL_OK)
+	    {
+	      return HAL_ERROR;
+	    }
+
+
+	    I2C_Send7bitAddress(hi2c->Instance,(uint8_t)DevAddress,I2C_Direction_Transmitter);
+
+	    /* Wait until ADDR flag is set */
+	    if (I2C_WaitOnMasterAddressFlagUntilTimeout(hi2c, I2C_FLAG_ADDR) != HAL_OK)
+	    {
+	      return HAL_ERROR;
+	    }
+
+  return HAL_OK;
+}
+
+/**
+  * @brief  Master sends target device address followed by internal memory address for write request.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @param  DevAddress Target device address: The device 7 bits address value
+  *         in datasheet must be shifted to the left before calling the interface
+  * @param  MemAddress Internal memory address
+  * @param  MemAddSize Size of internal memory address
+  * @param  Timeout Timeout duration
+  * @param  Tickstart Tick start value
+  * @retval HAL status
+  */
+static HAL_StatusTypeDef I2C_RequestMemoryWrite(I2C_HandleTypeDef *hi2c, uint8_t DevAddress, uint8_t MemAddress)
+{
+
+	/* Generate Start */
+	I2C_GenerateSTART(hi2c->Instance,ENABLE);
+
+  /* Wait until SB flag is set */
+  if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_SB,RESET) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  /* Send slave address */
+  I2C_Send7bitAddress(hi2c->Instance,(uint8_t)DevAddress,I2C_Direction_Transmitter);
+
+  /* Wait until ADDR flag is set */
+  if (I2C_WaitOnMasterAddressFlagUntilTimeout(hi2c, I2C_FLAG_ADDR) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  /* Clear ADDR flag */
+  I2C_Clear_Addr_Flag(hi2c);
+
+  /* Wait until TXE flag is set */
+  if (I2C_WaitOnTXEFlagUntilTimeout(hi2c) != HAL_OK)
+  {
+    if (hi2c->ErrorCode == HAL_I2C_ERROR_AF)
+    {
+      /* Generate Stop */
+      I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+      return HAL_ERROR;
+    }
+  }
+
+  I2C_SendData(hi2c->Instance,(uint8_t)MemAddress);
+
+  return HAL_OK;
+
+}
+  /**
+    * @brief  Master sends target device address followed by internal memory address for read request.
+    * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+    *         the configuration information for I2C module
+    * @param  DevAddress Target device address: The device 7 bits address value
+    *         in datasheet must be shifted to the left before calling the interface
+    * @param  MemAddress Internal memory address
+    * @param  MemAddSize Size of internal memory address
+    * @param  Timeout Timeout duration
+    * @param  Tickstart Tick start value
+    * @retval HAL status
+    */
+static HAL_StatusTypeDef I2C_RequestMemoryRead(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint16_t MemAddress)
+ {
+    /* Enable Acknowledge */
+    I2C_AcknowledgeConfig(hi2c->Instance,ENABLE);
+
+    /* Generate Start */
+   I2C_GenerateSTART(hi2c->Instance,ENABLE);
+
+    /* Wait until SB flag is set */
+    if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_SB,RESET) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+
+
+    I2C_Send7bitAddress(hi2c->Instance,(uint8_t)DevAddress,I2C_Direction_Transmitter);
+
+    /* Wait until ADDR flag is set */
+    if (I2C_WaitOnMasterAddressFlagUntilTimeout(hi2c, I2C_FLAG_ADDR) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+
+    /* Clear ADDR flag */
+    I2C_Clear_Addr_Flag(hi2c);
+
+
+
+    /* Wait until TXE flag is set */
+    if(I2C_WaitOnTXEFlagUntilTimeout(hi2c) != HAL_OK)
+    {
+      if (hi2c->ErrorCode == HAL_I2C_ERROR_AF)
+      {
+        /* Generate Stop */
+       I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+      }
+      return HAL_ERROR;
+    }
+
+
+    I2C_SendData(hi2c->Instance,(uint8_t)MemAddress);
+
+    /* Wait until TXE flag is set */
+    if (I2C_WaitOnTXEFlagUntilTimeout(hi2c) != HAL_OK)
+    {
+      if (hi2c->ErrorCode == HAL_I2C_ERROR_AF)
+      {
+        /* Generate Stop */
+    	I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+      }
+      return HAL_ERROR;
+    }
+
+    /* Generate Restart */
+   I2C_GenerateSTART(hi2c->Instance,ENABLE);
+
+    /* Wait until SB flag is set */
+    if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_SB,RESET) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+
+    /* Send slave address */
+    I2C_Send7bitAddress(hi2c->Instance,(uint8_t)DevAddress,I2C_Direction_Receiver);
+
+    /* Wait until ADDR flag is set */
+    if (I2C_WaitOnMasterAddressFlagUntilTimeout(hi2c, I2C_FLAG_ADDR) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+
+    return HAL_OK;
+  }
+
+/**
+  * @brief  Handle SB flag for Master
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @retval None
+  */
+static void I2C_Master_SB(I2C_HandleTypeDef *hi2c)
+{
+  if (hi2c->Mode == HAL_I2C_MODE_MEM)
+  {
+    if (hi2c->EventCount == 0U)
+    {
+
+      /* Send slave address */
+    	I2C_Send7bitAddress(hi2c->Instance,hi2c->Devaddress,I2C_Direction_Transmitter);
     }
     else
     {
-      hi2c->State = HAL_I2C_STATE_READY;
-
-      HAL_I2C_MasterRxCpltCallback(hi2c);
+    	I2C_Send7bitAddress(hi2c->Instance,hi2c->Devaddress,I2C_Direction_Receiver);
 
     }
   }
 
+}
+
+/**
+  * @brief  Handle ADDR flag for Master
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @retval None
+  */
+static void I2C_Master_ADDR(I2C_HandleTypeDef *hi2c)
+{
+	I2C_Clear_Addr_Flag(hi2c);
+
+}
+/** @addtogroup I2C_Private_Functions
+  * @{
+  */
+
+/**
+  * @brief  Handle TXE flag for Master
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @retval None
+  */
+static void I2C_MasterTransmit_TXE(I2C_HandleTypeDef *hi2c)
+{/* Declaration of temporary variables to prevent undefined behavior of volatile usage */
+	  HAL_I2C_StateTypeDef CurrentState = hi2c->State;
+	  HAL_I2C_ModeTypeDef CurrentMode   = hi2c->Mode;
+	  if ((CurrentMode == HAL_I2C_MODE_MEM) && (CurrentState == HAL_I2C_STATE_BUSY_RX))
+	  {
+		  if (hi2c->Mode == HAL_I2C_MODE_MEM)
+		  {
+		         if (hi2c->EventCount == 0U)
+		         {
+		        	 /* Send Memory Address */
+		        	 I2C_SendData(hi2c->Instance,hi2c->Memaddress);
+		        	 hi2c->EventCount += 2U;
+		         }
+
+				  else if (hi2c->EventCount == 2U)
+				  {
+					  if (hi2c->State == HAL_I2C_STATE_BUSY_RX)
+					   {
+									/* Generate Restart */
+						  I2C_GenerateSTART(hi2c->Instance,ENABLE);
+					   }
+				  }
+		  }
+	  }
+}
+
+/**
+  * @brief  Handle RXNE flag for Master
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *         the configuration information for I2C module
+  * @retval None
+  */
+static void I2C_MasterReceive_RXNE(I2C_HandleTypeDef *hi2c)
+{
+	uint32_t tmp = 0;
+	 if (hi2c->State == HAL_I2C_STATE_BUSY_RX)
+	  {
+		  tmp = hi2c->XferCount;
+		  if(tmp > 3)
+		  {
+			/* Read data from DR */
+			(*hi2c->pBuffPtr++) = hi2c->Instance->DR;
+			hi2c->XferCount--;
+		  }
+		  else if((tmp == 2) || (tmp == 3))
+		  {
+
+			  /* Disable BUF interrupt */
+			  I2C_ITConfig(hi2c->Instance,I2C_IT_BUF,DISABLE);
+
+			  }
+		  else
+		  {
+
+
+			  /* Disable EVT, BUF and ERR interrupt */
+			  	 I2C_ITConfig(hi2c->Instance,I2C_IT_BUF|I2C_IT_EVT|I2C_IT_ERR,DISABLE);
+
+				/* Read data from DR */
+				(*hi2c->pBuffPtr++) = hi2c->Instance->DR;
+				hi2c->XferCount--;
+
+
+			  hi2c->State = HAL_I2C_STATE_READY;
+
+			  HAL_I2C_MemRxCpltCallback(hi2c);
+
+		  }
+	  }
 }
 /**
   * @brief  Handle BTF flag for Master receiver
@@ -1933,7 +2014,7 @@ static void I2C_MasterReceive_RXNE(i2c_handle_t *hi2c)
   *         the configuration information for I2C module
   * @retval HAL status
   */
-static void I2C_MasterReceive_BTF(i2c_handle_t *hi2c)
+static void I2C_MasterReceive_BTF(I2C_HandleTypeDef *hi2c)
 {
 
   if(hi2c->XferCount == 3)
@@ -1946,8 +2027,7 @@ static void I2C_MasterReceive_BTF(i2c_handle_t *hi2c)
   }
   else if(hi2c->XferCount == 2)
   {
-	  if(counter==11)
-	 		 STM_EVAL_LEDOn(LED5);
+
     /* Generate Stop */
 	I2C_GenerateSTOP(hi2c->Instance,ENABLE);
 
@@ -1962,285 +2042,1003 @@ static void I2C_MasterReceive_BTF(i2c_handle_t *hi2c)
     /* Disable EVT and ERR interrupt */
   	I2C_ITConfig(hi2c->Instance,I2C_IT_EVT|I2C_IT_ERR,DISABLE);
 
-    if(hi2c->State == HAL_I2C_STATE_MEM_BUSY_RX)
-    {
+
       hi2c->State = HAL_I2C_STATE_READY;
 
       HAL_I2C_MemRxCpltCallback(hi2c);
-    }
-    else
-    {
 
-      hi2c->State = HAL_I2C_STATE_READY;
-
-      HAL_I2C_MasterRxCpltCallback(hi2c);
     }
-  }
+
   else
   {
-	  counter++;
+
     /* Read data from DR */
     (*hi2c->pBuffPtr++) = hi2c->Instance->DR;
     hi2c->XferCount--;
   }
-
-}
-/**
-  * @brief  Memory Tx Transfer completed callbacks.
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
-  * @retval None
-  */
- void HAL_I2C_MemTxCpltCallback(i2c_handle_t *hi2c)
-{
-  /* Prevent unused argument(s) compilation warning */
-
-  /* NOTE : This function Should not be modified, when the callback is needed,
-            the HAL_I2C_TxCpltCallback could be implemented in the user file
-   */
 }
 
-/**
-  * @brief  Master Tx Transfer completed callbacks.
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
-  * @retval None
-  */
-  void HAL_I2C_MasterTxCpltCallback(i2c_handle_t *hi2c)
+/* IO operation functions  ****************************************************/
+
+/******* Blocking mode: Polling */
+  /**
+    * @brief  Write an amount of data in blocking mode to a specific memory address
+    * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+    *                the configuration information for the specified I2C.
+    * @param  DevAddress Target device address: The device 7 bits address value
+    *         in datasheet must be shifted to the left before calling the interface
+    * @param  MemAddress Internal memory address
+    * @param  MemAddSize Size of internal memory address
+    * @param  pData Pointer to data buffer
+    * @param  Size Amount of data to be sent
+    * @param  Timeout Timeout duration
+    * @retval HAL status
+    */
+HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint16_t MemAddress,  uint8_t *pData, uint16_t Size)
 {
-  /* Prevent unused argument(s) compilation warning */
+	if (hi2c->State == HAL_I2C_STATE_READY)
+	{
+	    /* Wait until BUSY flag is reset */
+	    if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BUSY,SET) != HAL_OK)
+	    {
+	      return HAL_BUSY;
+	    }
+	    /* Check if the I2C is already enabled */
+	     if ((hi2c->Instance->CR1 & I2C_CR1_PE) != I2C_CR1_PE)
+	     {
+	       /* Enable I2C peripheral */
+	    	 I2C_Cmd(hi2c->Instance,ENABLE);
 
-  /* NOTE : This function Should not be modified, when the callback is needed,
-            the HAL_I2C_TxCpltCallback could be implemented in the user file
-   */
-}
+	     }
+	     /* Disable Pos *//*Check if needed */
+	     hi2c->Instance->CR1 &= ~I2C_CR1_POS;
 
-/**
-  * @brief  Memory Rx Transfer completed callbacks.
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
-  * @retval None
-  */
- void HAL_I2C_MemRxCpltCallback(i2c_handle_t *hi2c)
-{
-  /* Prevent unused argument(s) compilation warning */
+	     hi2c->State     = HAL_I2C_STATE_BUSY_TX;
+	     hi2c->Mode      = HAL_I2C_MODE_MEM;
+	     hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+	     /* Prepare transfer parameters */
+	     hi2c->pBuffPtr    = pData;
+	     hi2c->XferCount   = Size;
+	     hi2c->XferSize    = hi2c->XferCount;
+	     /* Send Slave Address and Memory Address */
+	     if (I2C_RequestMemoryWrite(hi2c, DevAddress, MemAddress) != HAL_OK)
+	     {
+	           return HAL_ERROR;
+	     }
+	     while (hi2c->XferSize > 0U)
+	     {
+	       /* Wait until TXE flag is set */
+	       if (I2C_WaitOnTXEFlagUntilTimeout(hi2c) != HAL_OK)
+	       {
+	         if (hi2c->ErrorCode == HAL_I2C_ERROR_AF)
+	         {
+	           /* Generate Stop */
+	           I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+	         }
+	         return HAL_ERROR;
+	       }
 
-  /* NOTE : This function Should not be modified, when the callback is needed,
-            the HAL_I2C_TxCpltCallback could be implemented in the user file
-   */
-}
+	       /* Write data to DR */
+	       I2C_SendData(hi2c->Instance,*hi2c->pBuffPtr);
 
-/**
-  * @brief  Slave Rx Transfer completed callbacks.
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
-  * @retval None
-  */
- void HAL_I2C_SlaveRxCpltCallback(i2c_handle_t *hi2c)
-{
-  /* Prevent unused argument(s) compilation warning */
+	       /* Increment Buffer pointer */
+	       hi2c->pBuffPtr++;
 
-  /* NOTE : This function Should not be modified, when the callback is needed,
-            the HAL_I2C_TxCpltCallback could be implemented in the user file
-   */
-}
+	       /* Update counter */
+	       hi2c->XferSize--;
+	       hi2c->XferCount--;
 
-/** @brief  Slave Tx Transfer completed callbacks.
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
-  * @retval None
-  */
-  void HAL_I2C_SlaveTxCpltCallback(i2c_handle_t *hi2c)
-{
-  /* Prevent unused argument(s) compilation warning */
+	       if ((I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_BTF) == SET) && (hi2c->XferSize != 0U))
+	       {
+	    	  /* Write data to DR */
+	    	  I2C_SendData(hi2c->Instance,*hi2c->pBuffPtr);
+	         /* Increment Buffer pointer */
+	         hi2c->pBuffPtr++;
 
-  /* NOTE : This function Should not be modified, when the callback is needed,
-            the HAL_I2C_TxCpltCallback could be implemented in the user file
-   */
-}
+	         /* Update counter */
+	         hi2c->XferSize--;
+	         hi2c->XferCount--;
+	       }
+	     }
 
-/**
-  * @brief  Master Rx Transfer completed callbacks.
-  * @param  hi2c: pointer to a i2c_handle_t structure that contains
-  *         the configuration information for I2C module
-  * @retval None
-  */
- void HAL_I2C_MasterRxCpltCallback(i2c_handle_t *hi2c)
-{
-  /* Prevent unused argument(s) compilation warning */
+	     /* Wait until BTF flag is set */
+	     if (I2C_WaitOnBTFFlagUntilTimeout(hi2c) != HAL_OK)
+	     {
+	       if (hi2c->ErrorCode == HAL_I2C_ERROR_AF)
+	       {
+	    	   /* Generate Stop */
+	    	   I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+	       }
+	       return HAL_ERROR;
+	     }
 
-  /* NOTE : This function Should not be modified, when the callback is needed,
-            the HAL_I2C_TxCpltCallback could be implemented in the user file */
-}
+	     /* Generate Stop */
+	     SET_BIT(hi2c->Instance->CR1, I2C_CR1_STOP);
 
-
- /**
-   * @brief  I2C error callbacks
-   * @param  I2cHandle: I2C handle
-   * @note   This example shows a simple way to report transfer error, and you can
-   *         add your own implementation.
-   * @retval None
-   */
- void HAL_I2C_ErrorCallback(i2c_handle_t *I2cHandle)
- {
-   while(1)
-   {
-	   STM_EVAL_LEDOn(LED6);
-   }
- }
-
- /**
-   * @brief  This function handles I2C event interrupt request.
-   * @param  hi2c: pointer to a i2c_handle_t structure that contains
-   *         the configuration information for I2C module
-   * @retval HAL status
-   */
- void HAL_I2C_EV_IRQHandler(i2c_handle_t *hi2c)
- {
-
-   uint32_t tmp1 = 0, tmp2 = 0, tmp3 = 0, tmp4 = 0;
-   /* Master mode selected */
-   if(( I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_MSL)))
-   	{
+	     hi2c->State = HAL_I2C_STATE_READY;
+	     hi2c->Mode = HAL_I2C_MODE_NONE;
 
 
 
-
-	  /* I2C in mode Transmitter -----------------------------------------------*/
-     if((I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_TRA)))
-     {
-    	 	tmp1 = I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_TXE);
- 			tmp2 =  (hi2c->Instance->CR2 & I2C_IT_BUF );
-
- 			tmp3 = I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_BTF);
- 			tmp4 = (hi2c->Instance->CR2 & I2C_IT_EVT );
-
-
-       /* BTF set -------------------------------------------------------------*/
- 			if((tmp3 && tmp4 ))
- 			{
-
- 				I2C_MasterTransmit_BTF(hi2c);
- 			}
- 			/* TXE set and BTF reset -----------------------------------------------*/
-            else if (tmp1 && tmp2 && (! tmp3))
-            {
-
-
-              I2C_MasterTransmit_TXE(hi2c);
-            }
-     }
-     /* I2C in mode Receiver --------------------------------------------------*/
-     else
-     {
-
-
- 			tmp1 =  I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_RXNE);
- 			tmp2 = (hi2c->Instance->CR2 & I2C_IT_BUF );
- 			tmp3 = I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_BTF);
- 			tmp4 =(hi2c->Instance->CR2 & I2C_IT_EVT );
-       /* RXNE set and BTF reset -----------------------------------------------*/
-       if((tmp1) && (tmp2) && (! tmp3))
-       {
-
-         I2C_MasterReceive_RXNE(hi2c);
-       }
-       /* BTF set -------------------------------------------------------------*/
-       else if((tmp3) && (tmp4))
-       {
-
-         I2C_MasterReceive_BTF(hi2c);
-       }
-     }
-
-
-   }
-
- }
-
-
- /**
-   * @brief  This function handles I2C error interrupt request.
-   * @param  hi2c: pointer to a i2c_handle_t structure that contains
-   *         the configuration information for I2C module
-   * @retval HAL status
-   */
-void HAL_I2C_ER_IRQHandler(i2c_handle_t *hi2c)
-{
-	 uint32_t tmp1 = 0, tmp2 = 0, tmp3 = 0;
-	 tmp1 =  (hi2c->Instance->SR1 & I2C_FLAG_BERR);
-	 tmp2 = (hi2c->Instance->CR2 & I2C_IT_ERR );
-	   /* I2C Bus error interrupt occurred ----------------------------------------*/
-	   if((tmp1) && (tmp2 ))
-	   {
-		 hi2c->ErrorCode |= HAL_I2C_ERROR_BERR;
-
-		 /* Clear BERR flag */
-			hi2c->Instance->SR1 &= ~ (I2C_FLAG_BERR);
+	     return HAL_OK;
 	   }
+	else
+	{
+	    return HAL_BUSY;
+	}
 
-	   tmp1 =  (hi2c->Instance->SR1 & I2C_FLAG_ARLO);
-	   tmp2 = (hi2c->Instance->CR2 & I2C_IT_ERR );
-	   /* I2C Arbitration Loss error interrupt occurred ---------------------------*/
-	   if((tmp1 ) && (tmp2))
-	   {
-		 hi2c->ErrorCode |= HAL_I2C_ERROR_ARLO;
+}
+/**
+  * @brief  Read an amount of data in blocking mode from a specific memory address
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @param  DevAddress Target device address: The device 7 bits address value
+  *         in datasheet must be shifted to the left before calling the interface
+  * @param  MemAddress Internal memory address
+  * @param  MemAddSize Size of internal memory address
+  * @param  pData Pointer to data buffer
+  * @param  Size Amount of data to be sent
+  * @param  Timeout Timeout duration
+  * @retval HAL status
+  */
+HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint16_t MemAddress, uint8_t *pData, uint16_t Size)
+{
 
-		 /* Clear ARLO flag */
-		 hi2c->Instance->SR1 &= ~ (I2C_FLAG_ARLO);
-	   }
+	  if (hi2c->State == HAL_I2C_STATE_READY)
+	  {
+	    /* Wait until BUSY flag is reset */
+	    if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BUSY,SET) != HAL_OK)
+	    {
+	      return HAL_BUSY;
+	    }
 
-	   tmp1 =  (hi2c->Instance->SR1 & I2C_FLAG_AF);
-	   tmp2 = (hi2c->Instance->CR2 & I2C_IT_ERR );
-	   /* I2C Acknowledge failure error interrupt occurred ------------------------*/
-	   if((tmp1 ) && (tmp2 ))
-	   {
-		 tmp1 = ( hi2c->Instance->SR2 & I2C_FLAG_MSL );
-		 tmp2 = hi2c->XferCount;
-		 tmp3 = hi2c->State;
-		 if(( ! tmp1 ) && (tmp2 == 0) && (tmp3 == HAL_I2C_STATE_BUSY_TX))
+	    /* Check if the I2C is already enabled */
+	    if ((hi2c->Instance->CR1 & I2C_CR1_PE) != I2C_CR1_PE)
+	    {
+	    	/* Enable I2C peripheral */
+	    	I2C_Cmd(hi2c->Instance,ENABLE);
+
+	    }
+
+	    /* Disable Pos *//*Check if needed */
+	    hi2c->Instance->CR1 &= ~I2C_CR1_POS;
+
+	    hi2c->State     = HAL_I2C_STATE_BUSY_RX;
+	    hi2c->Mode      = HAL_I2C_MODE_MEM;
+	    hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+
+	    /* Prepare transfer parameters */
+	    hi2c->pBuffPtr    = pData;
+	    hi2c->XferCount   = Size;
+	    hi2c->XferSize    = hi2c->XferCount;
+
+	    /* Send Slave Address and Memory Address */
+	    if (I2C_RequestMemoryRead(hi2c, DevAddress, MemAddress) != HAL_OK)
+	    {
+	      return HAL_ERROR;
+	    }
+
+	    if (hi2c->XferSize == 0U)
+	    {
+	      /* Clear ADDR flag */
+	    	I2C_Clear_Addr_Flag(hi2c);
+
+	      /* Generate Stop */
+	      I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+	    }
+	    else if (hi2c->XferSize == 1U)
+	    {
+	      /* Disable Acknowledge */
+	     I2C_AcknowledgeConfig(hi2c->Instance,DISABLE);
+	      /* Disable all active IRQs around ADDR clearing and STOP programming because the EV6_3
+	         software sequence must complete before the current byte end of transfer */
+	      __disable_irq();
+
+	      /* Clear ADDR flag */
+	      I2C_Clear_Addr_Flag(hi2c);
+
+
+
+	      /* Generate Stop */
+	      I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+
+	      /* Re-enable IRQs */
+	      __enable_irq();
+	    }
+	    else if (hi2c->XferSize == 2U)
+	    {
+	      /* Enable Pos */
+		  hi2c->Instance->CR1 |= I2C_CR1_POS;
+
+	      /* Disable all active IRQs around ADDR clearing and STOP programming because the EV6_3
+	         software sequence must complete before the current byte end of transfer */
+	      __disable_irq();
+
+	      /* Clear ADDR flag */
+	      I2C_Clear_Addr_Flag(hi2c);
+
+	      /* Disable Acknowledge */
+		  I2C_AcknowledgeConfig(hi2c->Instance,DISABLE);
+
+	      /* Re-enable IRQs */
+	      __enable_irq();
+	    }
+	    else
+	    {
+	    	/* Enable Acknowledge */
+			I2C_AcknowledgeConfig(hi2c->Instance,ENABLE);
+			 /* Clear ADDR flag */
+			I2C_Clear_Addr_Flag(hi2c);
+	    }
+
+	    while (hi2c->XferSize > 0U)
+	    {
+	      if (hi2c->XferSize <= 3U)
+	      {
+	        /* One byte */
+	        if (hi2c->XferSize == 1U)
+	        {
+	          /* Wait until RXNE flag is set */
+	          if (I2C_WaitOnRXNEFlagUntilTimeout(hi2c) != HAL_OK)
+	          {
+	            return HAL_ERROR;
+	          }
+
+	          /* Read data from DR */
+	          *hi2c->pBuffPtr = I2C_ReceiveData(hi2c->Instance);
+
+	          /* Increment Buffer pointer */
+	          hi2c->pBuffPtr++;
+
+	          /* Update counter */
+	          hi2c->XferSize--;
+	          hi2c->XferCount--;
+	        }
+	        /* Two bytes */
+	        else if (hi2c->XferSize == 2U)
+	        {
+	          /* Wait until BTF flag is set */
+	          if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BTF,RESET) != HAL_OK)
+	          {
+	            return HAL_ERROR;
+	          }
+
+	          /* Disable all active IRQs around ADDR clearing and STOP programming because the EV6_3
+	             software sequence must complete before the current byte end of transfer */
+	          __disable_irq();
+
+	          /* Generate Stop */
+	         I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+
+	          /* Read data from DR */
+	         *hi2c->pBuffPtr = I2C_ReceiveData(hi2c->Instance);
+
+	          /* Increment Buffer pointer */
+	          hi2c->pBuffPtr++;
+
+	          /* Update counter */
+	          hi2c->XferSize--;
+	          hi2c->XferCount--;
+
+	          /* Re-enable IRQs */
+	          __enable_irq();
+
+	          /* Read data from DR */
+	          *hi2c->pBuffPtr = I2C_ReceiveData(hi2c->Instance);
+	          /* Increment Buffer pointer */
+	          hi2c->pBuffPtr++;
+
+	          /* Update counter */
+	          hi2c->XferSize--;
+	          hi2c->XferCount--;
+	        }
+	        /* 3 Last bytes */
+	        else
+	        {
+	          /* Wait until BTF flag is set */
+	          if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BTF,RESET) != HAL_OK)
+	          {
+	            return HAL_ERROR;
+	          }
+
+	          /* Disable Acknowledge */
+	          I2C_AcknowledgeConfig(hi2c->Instance,DISABLE);
+
+	          /* Disable all active IRQs around ADDR clearing and STOP programming because the EV6_3
+	             software sequence must complete before the current byte end of transfer */
+	          __disable_irq();
+
+	          /* Read data from DR */
+	          *hi2c->pBuffPtr = I2C_ReceiveData(hi2c->Instance);
+
+	          /* Increment Buffer pointer */
+	          hi2c->pBuffPtr++;
+
+	          /* Update counter */
+	          hi2c->XferSize--;
+	          hi2c->XferCount--;
+
+	          /* Wait until BTF flag is set */
+	          if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BTF,RESET) != HAL_OK)
+	          {
+	            return HAL_ERROR;
+	          }
+
+	          /* Generate Stop */
+	          I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+	          /* Read data from DR */
+	          /* Read data from DR */
+	         *hi2c->pBuffPtr = I2C_ReceiveData(hi2c->Instance);
+
+	          /* Increment Buffer pointer */
+	          hi2c->pBuffPtr++;
+
+	          /* Update counter */
+	          hi2c->XferSize--;
+	          hi2c->XferCount--;
+
+	          /* Re-enable IRQs */
+	          __enable_irq();
+
+	          /* Read data from DR */
+	          /* Read data from DR */
+	          *hi2c->pBuffPtr = I2C_ReceiveData(hi2c->Instance);
+
+	          /* Increment Buffer pointer */
+	          hi2c->pBuffPtr++;
+
+	          /* Update counter */
+	          hi2c->XferSize--;
+	          hi2c->XferCount--;
+	        }
+	      }
+	      else
+	      {
+	        /* Wait until RXNE flag is set */
+	        if (I2C_WaitOnRXNEFlagUntilTimeout(hi2c) != HAL_OK)
+	        {
+	          return HAL_ERROR;
+	        }
+
+	        /* Read data from DR */
+	        *hi2c->pBuffPtr = I2C_ReceiveData(hi2c->Instance);
+	        /* Increment Buffer pointer */
+	        hi2c->pBuffPtr++;
+
+	        /* Update counter */
+	        hi2c->XferSize--;
+	        hi2c->XferCount--;
+
+	        if (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_BTF) == SET)
+	        {
+	        	/* Read data from DR */
+	        	*hi2c->pBuffPtr = I2C_ReceiveData(hi2c->Instance);
+	          /* Increment Buffer pointer */
+	          hi2c->pBuffPtr++;
+
+	          /* Update counter */
+	          hi2c->XferSize--;
+	          hi2c->XferCount--;
+	        }
+	      }
+	    }
+
+	    hi2c->State = HAL_I2C_STATE_READY;
+	    hi2c->Mode = HAL_I2C_MODE_NONE;
+
+
+	    return HAL_OK;
+	  }
+	  else
+	  {
+	    return HAL_BUSY;
+	  }
+
+
+}
+
+HAL_StatusTypeDef HAL_I2C_Master_Transmit(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint8_t *pData, uint16_t Size)
+{
+	if (hi2c->State == HAL_I2C_STATE_READY)
+	{
+		 /* Wait until BUSY flag is reset */
+		if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BUSY, SET) != HAL_OK)
+		{
+		    return HAL_BUSY;
+		}
+		  /* Check if the I2C is already enabled */
+		if ((hi2c->Instance->CR1 & I2C_CR1_PE) != I2C_CR1_PE)
+		{
+			    	/* Enable I2C peripheral */
+			I2C_Cmd(hi2c->Instance,ENABLE);
+		}
+		 /* Disable Pos *//*Check if needed */
+
+	    hi2c->State       = HAL_I2C_STATE_BUSY_TX;
+	    hi2c->Mode        = HAL_I2C_MODE_MASTER;
+	    hi2c->ErrorCode   = HAL_I2C_ERROR_NONE;
+
+	    /* Prepare transfer parameters */
+	    hi2c->pBuffPtr    = pData;
+	    hi2c->XferCount   = Size;
+	    hi2c->XferSize    = hi2c->XferCount;
+
+		 /* Send Slave Address */
+		 if (I2C_MasterRequestWrite(hi2c, DevAddress) != HAL_OK)
 		 {
-		   //I2C_Slave_AF(hi2c);
-		 }
-		 else
+		      return HAL_ERROR;
+		  }
+		 I2C_Clear_Addr_Flag(hi2c);
+		 while (hi2c->XferSize > 0U)
 		 {
-		   hi2c->ErrorCode |= HAL_I2C_ERROR_AF;
-		   /* Clear AF flag */
-			hi2c->Instance->SR1 &= ~ (I2C_FLAG_AF);
-		 }
-	   }
+		      /* Wait until TXE flag is set */
+			 if (I2C_WaitOnTXEFlagUntilTimeout(hi2c) != HAL_OK)
+		     {
+		        if (hi2c->ErrorCode == HAL_I2C_ERROR_AF)
+		        {
+		          /* Generate Stop */
+		        	I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+		        }
+		        return HAL_ERROR;
+		      }
 
-	   tmp1 =  (hi2c->Instance->SR1 & I2C_FLAG_OVR);
-	   tmp2 = (hi2c->Instance->CR2 & I2C_IT_ERR );
-	   /* I2C Over-Run/Under-Run interrupt occurred -------------------------------*/
-	   if((tmp1) && (tmp2))
-	   {
-		 hi2c->ErrorCode |= HAL_I2C_ERROR_OVR;
-		 /* Clear OVR flag */
-		 hi2c->Instance->SR1 &= ~ (I2C_FLAG_OVR);
-	   }
+		      if ((I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_BTF) == SET) && (hi2c->XferSize != 0U))
+		      {
+		        /* Write data to DR */
+		        hi2c->Instance->DR = *hi2c->pBuffPtr;
 
-	   if(hi2c->ErrorCode != HAL_I2C_ERROR_NONE)
-	   {
-		 hi2c->State = HAL_I2C_STATE_READY;
+		        /* Increment Buffer pointer */
+		        hi2c->pBuffPtr++;
 
-		 /* Disable Pos bit in I2C CR1 when error occurred in Master/Mem Receive IT Process */
-		 hi2c->Instance->CR1 &= ~I2C_CR1_POS;
+		        /* Update counter */
+		        hi2c->XferCount--;
+		        hi2c->XferSize--;
+		      }
 
-		 HAL_I2C_ErrorCallback(hi2c);
-   }
- }
+		      /* Wait until BTF flag is set */
+		      if (I2C_WaitOnBTFFlagUntilTimeout(hi2c) != HAL_OK)
+		      {
+		        if (hi2c->ErrorCode == HAL_I2C_ERROR_AF)
+		        {
+		          /* Generate Stop */
+		         I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+		        }
+		        return HAL_ERROR;
+		      }
+		    }
+		    /* Generate Stop */
+		    SET_BIT(hi2c->Instance->CR1, I2C_CR1_STOP);
+
+		    hi2c->State = HAL_I2C_STATE_READY;
+		    hi2c->Mode = HAL_I2C_MODE_NONE;
+
+
+		    return HAL_OK;
+	}
+	else
+	  {
+	    return HAL_BUSY;
+	  }
+}
+/**
+  * @brief  Receives in master mode an amount of data in blocking mode.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @param  DevAddress Target device address: The device 7 bits address value
+  *         in datasheet must be shifted to the left before calling the interface
+  * @param  pData Pointer to data buffer
+  * @param  Size Amount of data to be sent
+  * @param  Timeout Timeout duration
+  * @retval HAL status
+  */
+HAL_StatusTypeDef HAL_I2C_Master_Receive(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint8_t *pData, uint16_t Size)
+{
+	 if (hi2c->State == HAL_I2C_STATE_READY)
+	 {
+	    /* Wait until BUSY flag is reset */
+	    if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BUSY, SET) != HAL_OK)
+	    {
+	      return HAL_BUSY;
+	    }
+		  /* Check if the I2C is already enabled */
+		if ((hi2c->Instance->CR1 & I2C_CR1_PE) != I2C_CR1_PE)
+		{
+			    	/* Enable I2C peripheral */
+			I2C_Cmd(hi2c->Instance,ENABLE);
+		}
+	    /* Disable Pos */
+	    hi2c->Instance->CR1 &= ~I2C_CR1_POS;
+	    hi2c->State       = HAL_I2C_STATE_BUSY_RX;
+	    hi2c->Mode        = HAL_I2C_MODE_MASTER;
+	    hi2c->ErrorCode   = HAL_I2C_ERROR_NONE;
+
+	    /* Prepare transfer parameters */
+	    hi2c->pBuffPtr    = pData;
+	    hi2c->XferCount   = Size;
+	    hi2c->XferSize    = hi2c->XferCount;
+	    /* Send Slave Address */
+	      if (I2C_MasterRequestRead(hi2c, DevAddress) != HAL_OK)
+	      {
+	        return HAL_ERROR;
+	      }
+
+	      if (hi2c->XferSize == 0U)
+	      {
+	        /* Clear ADDR flag */
+	    	  I2C_Clear_Addr_Flag(hi2c);
+	        /* Generate Stop */
+	    	  I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+	      }
+	      else if (hi2c->XferSize == 1U)
+	      {
+	        /* Disable Acknowledge */
+	    	  I2C_AcknowledgeConfig(hi2c->Instance,DISABLE);
+	        /* Disable all active IRQs around ADDR clearing and STOP programming because the EV6_3
+	        software sequence must complete before the current byte end of transfer */
+	        __disable_irq();
+
+	        /* Clear ADDR flag */
+	    	  I2C_Clear_Addr_Flag(hi2c->Instance);
+
+	        /* Generate Stop */
+	    	  I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+
+	        /* Re-enable IRQs */
+	        __enable_irq();
+	      }
+	      else if (hi2c->XferSize == 2U)
+	      {
+	        /* Enable Pos */
+	  	    hi2c->Instance->CR1 |= I2C_CR1_POS;
+
+	        /* Disable all active IRQs around ADDR clearing and STOP programming because the EV6_3
+	        software sequence must complete before the current byte end of transfer */
+	        __disable_irq();
+
+	        /* Clear ADDR flag */
+	    	  I2C_Clear_Addr_Flag(hi2c);
+
+	        /* Disable Acknowledge */
+	    	I2C_AcknowledgeConfig(hi2c->Instance,DISABLE);
+
+	        /* Re-enable IRQs */
+	        __enable_irq();
+	      }
+	      else
+	      {
+	        /* Enable Acknowledge */
+	    	  I2C_AcknowledgeConfig(hi2c->Instance,ENABLE);
+
+	        /* Clear ADDR flag */
+	    	  I2C_Clear_Addr_Flag(hi2c);
+	      }
+	      while (hi2c->XferSize > 0U)
+	      {
+	        if (hi2c->XferSize <= 3U)
+	        {
+	          /* One byte */
+	          if (hi2c->XferSize == 1U)
+	          {
+	            /* Wait until RXNE flag is set */
+	            if (I2C_WaitOnRXNEFlagUntilTimeout(hi2c) != HAL_OK)
+	            {
+	              return HAL_ERROR;
+	            }
+
+	            /* Read data from DR */
+	            *hi2c->pBuffPtr = (uint8_t)hi2c->Instance->DR;
+
+	            /* Increment Buffer pointer */
+	            hi2c->pBuffPtr++;
+
+	            /* Update counter */
+	            hi2c->XferSize--;
+	            hi2c->XferCount--;
+	          }
+	          /* Two bytes */
+	          else if (hi2c->XferSize == 2U)
+	          {
+	            /* Wait until BTF flag is set */
+	            if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BTF, RESET) != HAL_OK)
+	            {
+	              return HAL_ERROR;
+	            }
+
+	            /* Disable all active IRQs around ADDR clearing and STOP programming because the EV6_3
+	               software sequence must complete before the current byte end of transfer */
+	            __disable_irq();
+
+	            /* Generate Stop */
+		    	  I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+
+	            /* Read data from DR */
+	            *hi2c->pBuffPtr = (uint8_t)hi2c->Instance->DR;
+
+	            /* Increment Buffer pointer */
+	            hi2c->pBuffPtr++;
+
+	            /* Update counter */
+	            hi2c->XferSize--;
+	            hi2c->XferCount--;
+
+	            /* Re-enable IRQs */
+	            __enable_irq();
+
+	            /* Read data from DR */
+	            *hi2c->pBuffPtr = (uint8_t)hi2c->Instance->DR;
+
+	            /* Increment Buffer pointer */
+	            hi2c->pBuffPtr++;
+
+	            /* Update counter */
+	            hi2c->XferSize--;
+	            hi2c->XferCount--;
+	          }
+	          /* 3 Last bytes */
+	          else
+	          {
+	            /* Wait until BTF flag is set */
+	            if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BTF, RESET) != HAL_OK)
+	            {
+	              return HAL_ERROR;
+	            }
+
+	            /* Disable Acknowledge */
+		    	  I2C_AcknowledgeConfig(hi2c->Instance,DISABLE);
+
+	            /* Disable all active IRQs around ADDR clearing and STOP programming because the EV6_3
+	               software sequence must complete before the current byte end of transfer */
+	            __disable_irq();
+
+	            /* Read data from DR */
+	            *hi2c->pBuffPtr = (uint8_t)hi2c->Instance->DR;
+
+	            /* Increment Buffer pointer */
+	            hi2c->pBuffPtr++;
+
+	            /* Update counter */
+	            hi2c->XferSize--;
+	            hi2c->XferCount--;
+
+	            /* Wait until BTF flag is set */
+	            if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BTF, RESET) != HAL_OK)
+	            {
+	              return HAL_ERROR;
+	            }
+
+	            /* Generate Stop */
+		    	I2C_GenerateSTOP(hi2c->Instance,ENABLE);
+
+	            /* Read data from DR */
+	            *hi2c->pBuffPtr = (uint8_t)hi2c->Instance->DR;
+
+	            /* Increment Buffer pointer */
+	            hi2c->pBuffPtr++;
+
+	            /* Update counter */
+	            hi2c->XferSize--;
+	            hi2c->XferCount--;
+
+	            /* Re-enable IRQs */
+	            __enable_irq();
+
+	            /* Read data from DR */
+	            *hi2c->pBuffPtr = (uint8_t)hi2c->Instance->DR;
+
+	            /* Increment Buffer pointer */
+	            hi2c->pBuffPtr++;
+
+	            /* Update counter */
+	            hi2c->XferSize--;
+	            hi2c->XferCount--;
+	          }
+	        }
+	        else
+	        {
+	          /* Wait until RXNE flag is set */
+	          if (I2C_WaitOnRXNEFlagUntilTimeout(hi2c) != HAL_OK)
+	          {
+	            return HAL_ERROR;
+	          }
+
+	          /* Read data from DR */
+	          *hi2c->pBuffPtr = (uint8_t)hi2c->Instance->DR;
+
+	          /* Increment Buffer pointer */
+	          hi2c->pBuffPtr++;
+
+	          /* Update counter */
+	          hi2c->XferSize--;
+	          hi2c->XferCount--;
+
+	          if (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_BTF) == SET)
+	          {
+	            /* Read data from DR */
+	            *hi2c->pBuffPtr = (uint8_t)hi2c->Instance->DR;
+
+	            /* Increment Buffer pointer */
+	            hi2c->pBuffPtr++;
+
+	            /* Update counter */
+	            hi2c->XferSize--;
+	            hi2c->XferCount--;
+	          }
+	        }
+	      }
+
+	      hi2c->State = HAL_I2C_STATE_READY;
+	      hi2c->Mode = HAL_I2C_MODE_NONE;
+
+
+	      return HAL_OK;
+	    }
+	    else
+	    {
+	      return HAL_BUSY;
+	    }
+
+}
+
+/* IO operation functions  ****************************************************/
+/******* non Blocking mode:Interrupt */
+HAL_StatusTypeDef HAL_I2C_Master_Transmit_IT(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint8_t *pData, uint16_t Size)
+{
+}
+
+HAL_StatusTypeDef HAL_I2C_Master_Receive_IT(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint8_t *pData, uint16_t Size)
+{}
+/**
+  * @brief  Write an amount of data in non-blocking mode with Interrupt to a specific memory address
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @param  DevAddress Target device address: The device 7 bits address value
+  *         in datasheet must be shifted to the left before calling the interface
+  * @param  MemAddress Internal memory address
+  * @param  MemAddSize Size of internal memory address
+  * @param  pData Pointer to data buffer
+  * @param  Size Amount of data to be sent
+  * @retval HAL status
+  */
+HAL_StatusTypeDef HAL_I2C_Mem_Write_IT(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint16_t MemAddress, uint8_t *pData, uint16_t Size)
+{
+	__IO uint32_t count = 0U;
+
+
+
+	if (hi2c->State == HAL_I2C_STATE_READY)
+	{
+	  /* Wait until BUSY flag is reset */
+	  count = I2C_TIMEOUT_BUSY_FLAG * (SystemCoreClock / 25U / 1000U);
+	  do
+	  {
+		count--;
+		if (count == 0U)
+		{
+		  hi2c->State               = HAL_I2C_STATE_READY;
+		  hi2c->Mode                = HAL_I2C_MODE_NONE;
+		  hi2c->ErrorCode           |= HAL_I2C_ERROR_TIMEOUT;
+
+
+
+		  return HAL_ERROR;
+		}
+	  }
+	  while (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_BUSY) != RESET);
+
+
+	  /* Check if the I2C is already enabled */
+	  if ((hi2c->Instance->CR1 & I2C_CR1_PE) != I2C_CR1_PE)
+	  {
+		/* Enable I2C peripheral */
+	    I2C_Cmd(hi2c->Instance,ENABLE);
+	  }
+
+	  /* Disable Pos */
+	   hi2c->Instance->CR1 &= ~I2C_CR1_POS;
+
+	  hi2c->State     = HAL_I2C_STATE_BUSY_TX;
+	  hi2c->Mode      = HAL_I2C_MODE_MEM;
+	  hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+
+	  /* Prepare transfer parameters */
+	  hi2c->pBuffPtr    = pData;
+	  hi2c->XferCount   = Size;
+	  hi2c->XferSize    = hi2c->XferCount;
+	  hi2c->Devaddress  = DevAddress;
+	  hi2c->Memaddress  = MemAddress;
+	  hi2c->EventCount  = 0U;
+
+	  /* Generate Start */
+	  I2C_GenerateSTART(hi2c->Instance,ENABLE);
+
+
+
+	  /* Note : The I2C interrupts must be enabled after unlocking current process
+	  to avoid the risk of I2C interrupt handle execution before current
+	  process unlock */
+
+	  /* Enable EVT, BUF and ERR interrupt */
+	  I2C_ITConfig(hi2c->Instance,I2C_IT_ERR|I2C_IT_EVT|I2C_IT_BUF,ENABLE);
+	  return HAL_OK;
+}
+else
+{
+  return HAL_BUSY;
+}
+}
+/**
+  * @brief  Read an amount of data in non-blocking mode with Interrupt from a specific memory address
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @param  DevAddress Target device address
+  * @param  MemAddress Internal memory address
+  * @param  MemAddSize Size of internal memory address
+  * @param  pData Pointer to data buffer
+  * @param  Size Amount of data to be sent
+  * @retval HAL status
+  */
+HAL_StatusTypeDef HAL_I2C_Mem_Read_IT(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint16_t MemAddress, uint8_t *pData, uint16_t Size)
+{
+	 __IO uint32_t count = 0U;
+
+
+	  if (hi2c->State == HAL_I2C_STATE_READY)
+	  {
+	    /* Wait until BUSY flag is reset */
+	    count = I2C_TIMEOUT_BUSY_FLAG * (SystemCoreClock / 25U / 1000U);
+	    do
+	    {
+	      count--;
+	      if (count == 0U)
+	      {
+	        hi2c->State               = HAL_I2C_STATE_READY;
+	        hi2c->Mode                = HAL_I2C_MODE_NONE;
+	        hi2c->ErrorCode           |= HAL_I2C_ERROR_TIMEOUT;
+
+
+
+	        return HAL_ERROR;
+	      }
+	    }
+	    while (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_BUSY) != RESET);
+
+
+	    /* Check if the I2C is already enabled */
+	    if ((hi2c->Instance->CR1 & I2C_CR1_PE) != I2C_CR1_PE)
+	    {
+	    	/* Enable I2C peripheral */
+	    	I2C_Cmd(hi2c->Instance,ENABLE);
+	    }
+
+	    /* Disable Pos */
+	    hi2c->Instance->CR1 &= ~I2C_CR1_POS;
+
+
+	    hi2c->State     = HAL_I2C_STATE_BUSY_RX;
+	    hi2c->Mode      = HAL_I2C_MODE_MEM;
+	    hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+
+	    /* Prepare transfer parameters */
+	    hi2c->pBuffPtr    = pData;
+	    hi2c->XferCount   = Size;
+	    hi2c->XferSize    = hi2c->XferCount;
+	    hi2c->Devaddress  = DevAddress;
+	    hi2c->Memaddress  = MemAddress;
+	    hi2c->EventCount  = 0U;
+
+	    /* Enable Acknowledge */
+	   I2C_AcknowledgeConfig(hi2c->Instance,ENABLE);
+
+	    /* Generate Start */
+	    I2C_GenerateSTART(hi2c->Instance,ENABLE);
+
+
+
+
+	    if (hi2c->XferSize > 0U)
+	    {
+	      /* Note : The I2C interrupts must be enabled after unlocking current process
+	      to avoid the risk of I2C interrupt handle execution before current
+	      process unlock */
+	    __enable_irq();
+
+	      /* Enable EVT, BUF and ERR interrupt */
+	  	  I2C_ITConfig(hi2c->Instance,I2C_IT_ERR|I2C_IT_EVT|I2C_IT_BUF,ENABLE);
+	    }
+	    return HAL_OK;
+	  }
+	  else
+	  {
+	    return HAL_BUSY;
+	  }
+}
+/** @defgroup I2C_IRQ_Handler_and_Callbacks IRQ Handler and Callbacks
+ * @{
+ */
 
 /**
-  * @}
-  */ 
+  * @brief  This function handles I2C event interrupt request.
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @retval None
+  */
+void HAL_I2C_EV_IRQHandler(I2C_HandleTypeDef *hi2c)
+{
+	  uint32_t tmp1 = 0, tmp2 = 0, tmp3 = 0,tmp4 = 0;
+	  HAL_I2C_ModeTypeDef  CurrentMode   = hi2c->Mode;
 
-/**
-  * @}
-  */ 
+	  /* Master or Memory mode selected */
+	  if ((CurrentMode == HAL_I2C_MODE_MASTER) || (CurrentMode == HAL_I2C_MODE_MEM))
+	  {
 
-/**
-  * @}
-  */ 
+	    /* SB Set ----------------------------------------------------------------*/
+	    if (I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_SB)!= RESET)
+	    {
+
+	      I2C_Master_SB(hi2c);
+	    }
+
+	    /* ADDR Set --------------------------------------------------------------*/
+	    else if (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_ADDR) != RESET )
+	    {
+	      I2C_Master_ADDR(hi2c);
+	    }
+	    /* I2C in mode Transmitter -----------------------------------------------*/
+	    else if (I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_TRA) != RESET)
+	    {
+
+	        /* TXE set and BTF reset -----------------------------------------------*/
+	        if ((I2C_GetFlagStatus(hi2c->Instance, I2C_FLAG_TXE) != RESET)  )
+	        {
+	          I2C_MasterTransmit_TXE(hi2c);
+	        }
+	    }
+	    /* I2C in mode Receiver --------------------------------------------------*/
+	    else
+	    {
+	    	tmp1 =  I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_RXNE);
+	    	tmp2 = (hi2c->Instance->CR2 & I2C_IT_BUF );
+	    	tmp3 = I2C_GetFlagStatus(hi2c->Instance,I2C_FLAG_BTF);
+	    	tmp4 =(hi2c->Instance->CR2 & I2C_IT_EVT );
+
+	        /* RXNE set and BTF reset -----------------------------------------------*/
+	    	 if((tmp1) && (tmp2) && (! tmp3))
+	        {
+	          I2C_MasterReceive_RXNE(hi2c);
+	        }
+	        /* BTF set -------------------------------------------------------------*/
+	    	 else if((tmp3) && (tmp4))
+	        {
+	          I2C_MasterReceive_BTF(hi2c);
+	        }
+	        else
+	        {
+	          /* Do nothing */
+	        }
+	      }
+	    }
+}
+void HAL_I2C_ER_IRQHandler(I2C_HandleTypeDef *hi2c)
+{
+
+}
+
+/*******************************************************
+ * 			CALL BACK
+ ********************************************************/
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{}
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{}
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{}
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{}
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+}
+
+
+
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
