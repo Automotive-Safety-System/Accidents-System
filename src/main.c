@@ -107,7 +107,6 @@ int main(void){
 void vApplicationMallocFailedHook( void ){
 	/* The malloc failed hook is enabled by setting
 	configUSE_MALLOC_FAILED_HOOK to 1 in FreeRTOSConfig.h.
-
 	Called if a call to pvPortMalloc() fails because there is insufficient
 	free memory available in the FreeRTOS heap.  pvPortMalloc() is called
 	internally by FreeRTOS API functions that create tasks, queues, software
@@ -133,7 +132,6 @@ volatile size_t xFreeStackSpace;
 
 	/* The idle task hook is enabled by setting configUSE_IDLE_HOOK to 1 in
 	FreeRTOSConfig.h.
-
 	This function is called on each cycle of the idle task.  In this case it
 	does nothing useful, other than report the amount of FreeRTOS heap that
 	remains unallocated. */
@@ -162,4 +160,3 @@ static void prvSetupHardware( void ){
 /*dummy refrences for compilation conflicts
  * remove these only when if you need to implement them in main*/
 void vApplicationTickHook( void ){}
-

@@ -41,6 +41,7 @@
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
+extern i2c_handle_t i2c_handle;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -191,11 +192,11 @@ void USART5_IRQHandler(void){
 void I2C1_EV_IRQHandler(void)
 {
 
-	//HAL_I2C_EV_IRQHandler(&i2c_handle);
+	HAL_I2C_EV_IRQHandler(&i2c_handle);
 }
 void I2C1_ER_IRQHandler(void)
 {
-	//HAL_I2C_ER_IRQHandler(&i2c_handle );
+	HAL_I2C_ER_IRQHandler(&i2c_handle );
 }
 /**
   * @brief  This function handles PPP interrupt request.

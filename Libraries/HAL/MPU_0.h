@@ -9,6 +9,8 @@
 #define MPU_H_
 #include "stm32f4xx_i2c.h"
 
+
+
 /* Default I2C used */
 #ifndef MPU6050_I2C
 #define	MPU6050_I2C					I2C1
