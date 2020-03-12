@@ -41,7 +41,7 @@
 #include "misc.h" /* High level functions for NVIC and SysTick (add-on to CMSIS functions) */
 #include "tm_stm32_buffer.h"
 #include "tm_stm32_gps.h"
-#include "MPU_0.h"
+#include "MPU6050.h"
 #include "ESP01.h"
 #include "GSM.h"
 #include "FreeRTOS.h"
