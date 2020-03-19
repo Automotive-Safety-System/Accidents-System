@@ -13,6 +13,7 @@
 
 extern TaskHandle_t handle_gsm_os_init;
 
+extern TaskHandle_t xTask_MPU6050_Read_RawData;
 
 void OS_INIT(void){
 
@@ -51,6 +52,13 @@ void OS_INIT(void){
 				NULL,
 				5,
 				NULL);
+	  xTaskCreate(MPU6050_Read_All,
+			  	  "MPU6050_ReadData",
+				  200,
+				  NULL,
+				  5 ,
+				  &xTask_MPU6050_Read_RawData);
+
 }
 
 

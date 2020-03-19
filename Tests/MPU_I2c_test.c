@@ -59,36 +59,26 @@ SOFTWARE.
  /* write the following code in main to receive data*/
 
   /* TODO - Add your application code here */
-
+	MPU6050_t *MPU_Main;
   /* Initialize LEDs */
   STM_EVAL_LEDInit(LED3);
   STM_EVAL_LEDInit(LED4);
   STM_EVAL_LEDInit(LED5);
   STM_EVAL_LEDInit(LED6);
+  MPU6050_Module_INIT(MPU_Main);
 
+  /* if you want data from mpu*/
+  	printf("Accel_X: %d\n",MPU_Main->Accel_X_RAW);
+  	printf("Accel_Y: %d\n",MPU_Main->Accel_Y_RAW);
+  	printf("Accel_Z :%d\n",MPU_Main->Accel_Z_RAW );
+  	printf("GYR_X: %d\n",MPU_Main->Gyro_X_RAW);
+  	printf("GYR_Y: %d\n",MPU_Main->Gyro_Y_RAW);
+  	printf("GYR_Z: %d\n",MPU_Main->Gyro_Z_RAW);
   /* Turn on LEDs */
  /* STM_EVAL_LEDOn(LED3);
   STM_EVAL_LEDOn(LED4);
   STM_EVAL_LEDOn(LED5);
   STM_EVAL_LEDOn(LED6);*/
-  I2C1_Init();
-  MPU6050_t MPU_Data1 ;
-  if (MPU6050_Init(&MPU_Data1, MPU6050_Device_0, MPU6050_Accelerometer_8G,
- 	  MPU6050_Gyroscope_250s) == MPU6050_Result_Ok)
-   {
-	  	  STM_EVAL_LEDOn(LED3);
- 	  	  STM_EVAL_LEDOn(LED4);
-   }else {
- 	  	//  STM_EVAL_LEDOn(LED3);
-   }
-
-  if(MPU6050_ReadAll(&MPU_Data1)==MPU6050_Result_Ok)
-	  {
-
-	  	  STM_EVAL_LEDOn(LED5);
-	  	  STM_EVAL_LEDOn(LED6);
-	  }
-
 
 
 /*
