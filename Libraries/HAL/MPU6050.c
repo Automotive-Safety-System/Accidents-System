@@ -28,11 +28,23 @@ static	I2C_HandleTypeDef I2C_Handle;
 
 static MPU6050_t* MY_MPU;
 
+TaskHandle_t xTask_MPU6050_Read_RawData=NULL;
+
 static float accelScalingFactor, gyroScalingFactor;
 
+
+static void MPU6050_StructCpy(MPU6050_t *Data_Struct);
 static void MPU6050_I2C_Config();
 static void MPU6050_Config_Init(MPU6050_t *Data_Struct);
 static void MPU6050_Init(MPU6050_t *Data_Struct);
+
+
+
+static void MPU6050_StructCpy(MPU6050_t *Data_Struct)
+{
+	//Copy I2C CubeMX handle to local library
+	memcpy(MY_MPU,Data_Struct, sizeof(*Data_Struct));
+}
 
 
 
@@ -171,7 +183,7 @@ static void MPU6050_Init(MPU6050_t *Data_Struct)
 		Buffer = 0x07;
 		HAL_I2C_Mem_Write(&I2C_Handle, MPU6050_ADDR, SMPLRT_DIV_REG, &Buffer, 1);
 		
-		STM_EVAL_LEDOn(2);
+		//STM_EVAL_LEDOn(2);
 	}
 
 	//Accelerometer Scaling Factor, Set the Accelerometer and Gyroscope Scaling Factor
@@ -221,8 +233,9 @@ static void MPU6050_Init(MPU6050_t *Data_Struct)
 
 }
 
-extern void MPU6050_Module_INIT()
+extern void MPU6050_Module_INIT(MPU6050_t *Data_Struct)
 {
+	 MPU6050_StructCpy(Data_Struct);
 	 MPU6050_I2C_Config();
 	 MPU6050_Config_Init(MY_MPU);
 	 MPU6050_Init(MY_MPU);
@@ -234,7 +247,7 @@ extern void MPU6050_Read_All()
 	uint8_t Rec_Data[14];
 	int16_t temp;
 
-
+	while(1){
 	// Read 14 BYTES of data starting from ACCEL_XOUT_H register
 
 	HAL_I2C_Mem_Read_IT(&I2C_Handle, MPU6050_ADDR, ACCEL_XOUT_H_REG,Rec_Data, 14);
@@ -253,6 +266,9 @@ extern void MPU6050_Read_All()
 //	printf("GYR_X: %d\n",MY_MPU->Gyro_X_RAW);
 //	printf("GYR_Y: %d\n",MY_MPU->Gyro_Y_RAW);
 //	printf("GYR_Z: %d\n",MY_MPU->Gyro_Z_RAW);
+	vTaskDelay(pdMS_TO_TICKS(100));
+
+	}
 
 }
 //10- Get Accel scaled data (g unit of gravity, 1g = 9.81m/s2)
