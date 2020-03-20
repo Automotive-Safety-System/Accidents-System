@@ -15,9 +15,13 @@
 
 #define TCP_CONNECTED			1
 #define TCP_NOT_CONNECTED		0
+#define AVAILABLE  				0
+#define SENDING					1
+#define RECEIVING				2
 
 uint8_t ESP_connection_status = ESP_CONNECTION_TIMEOUT;
 uint8_t ESP_tcp_status = TCP_NOT_CONNECTED ;
+uint8_t resource_allowed = AVAILABLE;
 
 uint8_t ESP_Send_Buffer[ESP_SEND_BUFFER_SIZE];
 TM_BUFFER_t ESP_Send_Buffer_obj = {ESP_SEND_BUFFER_SIZE, 0, 0, ESP_Send_Buffer, 0, '\n'};
@@ -312,11 +316,11 @@ void ESP_ReadDataTask(void * pvParameters){
 
 	char response[100]={'\0'};
 	uint8_t i = 0;
-	int32_t length ;
+	int32_t length = 0;
 	char c;
 	for(;;){
 		//TODO check semaphores first to see if it's allowed to work
-		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED){
+		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED && resource_allowed == AVAILABLE){
 
 			if (!USART_BufferEmpty(ESP_USART)){
 				for(i = 0 ; i < 5 ; i++){
@@ -329,7 +333,7 @@ void ESP_ReadDataTask(void * pvParameters){
 
 
 			if(strstr(response, "+IPD") != 0){
-				//TODO STOP OTHER TASKS USING SEMAPHORES HERE
+				resource_allowed = RECEIVING;
 				i = 0;
 				memset(response, 0, 100*sizeof(char));
 				while (!USART_BufferEmpty(ESP_USART)){
@@ -345,7 +349,6 @@ void ESP_ReadDataTask(void * pvParameters){
 
 			while (!USART_BufferEmpty(ESP_USART)){
 				if ((c = USART_ReceiveData(ESP_USART))!=0){
-					//TODO mutex or semaphore the buffer
 					TM_BUFFER_Write(&ESP_Receive_Buffer_obj, &c, 1);
 					length--;
 					if (length == 0 )
@@ -353,12 +356,14 @@ void ESP_ReadDataTask(void * pvParameters){
 				}
 			}
 
-			if (length == 0){
-				//TODO enable other tasks to work using semaphore
-			}
+			//if (length == 0){
+				resource_allowed = AVAILABLE;
+			//}
 		}
 
-		//TODO else {make other tasks work using semaphores}
+		 else {
+			 //resource_allowed = AVAILABLE;
+		 }
 
 		vTaskDelay(pdMS_TO_TICKS(2));
 	}
@@ -406,9 +411,10 @@ void ESP_SendDataTask(void * pvParameters){
 	char c;
 
 	for(;;){
-		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED){
+		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED && (resource_allowed== AVAILABLE||SENDING)){
 
 			if(TM_BUFFER_GetFull(&ESP_Send_Buffer_obj) != 0){
+				resource_allowed = SENDING;
 				i = 0;
 				length = TM_BUFFER_GetFull(&ESP_Send_Buffer_obj);
 				memset(command, 0, 20*sizeof(char));
@@ -425,11 +431,11 @@ void ESP_SendDataTask(void * pvParameters){
 
 				if(strstr(response, "STATUS:3") != 0){
 					for (i=0 ; i<length ; i++){
-						//TODO mutex or semaphore the buffer
+						resource_allowed = SENDING;
 						TM_BUFFER_Read(&ESP_Send_Buffer_obj, &c, 1);
 						USART_SendData(ESP_USART, c);
 					}
-
+					resource_allowed = AVAILABLE;
 				}
 
 				else if(strstr(response, "STATUS:4") != 0){
@@ -437,6 +443,7 @@ void ESP_SendDataTask(void * pvParameters){
 				}
 			}
 		}
+
 
 	}
 	vTaskDelay(pdMS_TO_TICKS(500));
