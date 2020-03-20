@@ -285,6 +285,29 @@ uint8_t ESP_ReadData(char* user_buffer, char delimeter){
 	return 1;
 }
 
+/*receives string from the receiving buffer
+ * The whole receiving process is handled then by RTOS
+ * if you are using RTOS, start the receiving task and use
+ * this API to receive data.
+ * @Parameters:address: the reference to the user buffer,
+ * 			   maxbytes: refers to the maximum length expected by the user.
+ *
+ * @returns: the true length have been received.
+ * 			   */
+
+int ESP_ReadDataRT(unsigned char *address, unsigned int maxbytes){
+	char c;
+	unsigned int i = 0;
+	for(i=0 ; i<maxbytes ; i++){
+		if(TM_BUFFER_GetFull(&ESP_Receive_Buffer_obj) == 0){
+			return i;
+		}
+		TM_BUFFER_Read(&ESP_Receive_Buffer_obj, &c, 1);
+		address[i] = c;
+	}
+	return i;
+}
+
 void ESP_ReadDataTask(void * pvParameters){
 
 	char response[100]={'\0'};
@@ -351,6 +374,27 @@ uint8_t ESP_SendData(uint32_t length, char* data){
 	}
 
 	return 1;
+}
+
+/*sends string to the sending buffer
+ * The whole sending process is handled then by RTOS
+ * if you are using RTOS, start the sending task and use
+ * this API to send data.
+ * @Parameters:address: the reference to the string,
+ * 			   bytes: refers to the length.
+ *
+ * @returns: the true length have been sent.
+ * 			   */
+int ESP_SendDataRT(unsigned char *address, unsigned int bytes){
+	unsigned int i = 0;
+//TODO use semaphores to handle the shared buffer
+	for(i=0 ; i<bytes ; i++){
+		if (TM_BUFFER_GetFull(&ESP_Send_Buffer_obj) == (ESP_SEND_BUFFER_SIZE - 1)){
+			return i;
+		}
+		TM_BUFFER_Write(&ESP_Send_Buffer_obj, &address[i], 1);
+	}
+	return i;
 }
 
 void ESP_SendDataTask(void * pvParameters){

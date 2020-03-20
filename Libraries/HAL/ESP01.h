@@ -36,7 +36,9 @@ uint8_t ESP_ApplicationMode(uint8_t mode);
 uint8_t ESP_StartTCP(char* Domain, char* Port);
 void ESP_StartTCPTask(void * pvParameters);
 uint8_t ESP_ReadData(char* user_buffer, char delimeter);
+int ESP_ReadDataRT(unsigned char *address, unsigned int maxbytes);
 void ESP_ReadDataTask(void * pvParameters);
 uint8_t ESP_SendData(uint32_t length, char* data);
+int ESP_SendDataRT(unsigned char *address, unsigned int bytes);
 void ESP_SendDataTask(void * pvParameters);
 #endif /* HAL_ESP01_H_ */
