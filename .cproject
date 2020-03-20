@@ -19,7 +19,7 @@
 							<option id="com.atollic.truestudio.toolchain_options.mcu.1860554851" name="Microcontroller" superClass="com.atollic.truestudio.toolchain_options.mcu" value="STM32F407VG" valueType="string"/>
 							<option id="com.atollic.truestudio.toolchain_options.vendor.1725191763" name="Vendor name" superClass="com.atollic.truestudio.toolchain_options.vendor" value="STMicroelectronics" valueType="string"/>
 							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="com.atollic.truestudio.exe.debug.toolchain.platform.617126783" isAbstract="false" name="Debug platform" osList="all" superClass="com.atollic.truestudio.exe.debug.toolchain.platform"/>
-							<builder buildPath="${workspace_loc:/Accidents-System}/Debug" customBuilderProperties="toolChainpathString=C:\\Program Files (x86)\\Atollic\\TrueSTUDIO for STM32 9.3.0\\ARMTools\\bin|toolChainpathType=1|" id="com.atollic.truestudio.mbs.builder1.1091451422" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="CDT Internal Builder" superClass="com.atollic.truestudio.mbs.builder1"/>
+							<builder buildPath="${workspace_loc:/Accidents-System}/Debug" customBuilderProperties="toolChainpathType=1|toolChainpathString=C:\\Program Files (x86)\\Atollic\\TrueSTUDIO for STM32 9.3.0\\ARMTools\\bin|" id="com.atollic.truestudio.mbs.builder1.1091451422" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="CDT Internal Builder" superClass="com.atollic.truestudio.mbs.builder1"/>
 							<tool id="com.atollic.truestudio.exe.debug.toolchain.as.27245505" name="Assembler" superClass="com.atollic.truestudio.exe.debug.toolchain.as">
 								<option id="com.atollic.truestudio.common_options.target.endianess.1678691601" name="Endianess" superClass="com.atollic.truestudio.common_options.target.endianess"/>
 								<option id="com.atollic.truestudio.common_options.target.mcpu.734073099" name="Microcontroller" superClass="com.atollic.truestudio.common_options.target.mcpu" value="STM32F407VG" valueType="enumerated"/>
@@ -130,6 +130,48 @@
 						</toolChain>
 					</folderInfo>
 					<fileInfo id="com.atollic.truestudio.exe.debug.826054947.1799436363" name="FreeRTOSConfig.h" rcbsApplicability="disable" resourcePath="src/FreeRTOSConfig.h" toolsToInvoke=""/>
+					<folderInfo id="com.atollic.truestudio.exe.debug.826054947.664000243" name="/" resourcePath="Libraries/Middleware">
+						<toolChain id="com.atollic.truestudio.exe.debug.toolchain.1800668907" name="Atollic ARM Tools" superClass="com.atollic.truestudio.exe.debug.toolchain" unusedChildren="">
+							<option id="com.atollic.truestudio.general.runtimelib.2083527955.1336402209" name="Runtime Library" superClass="com.atollic.truestudio.general.runtimelib.2083527955"/>
+							<option id="com.atollic.truestudio.toolchain_options.mcu.1860554851.1252826600" name="Microcontroller" superClass="com.atollic.truestudio.toolchain_options.mcu.1860554851"/>
+							<option id="com.atollic.truestudio.toolchain_options.vendor.1725191763.617299066" name="Vendor name" superClass="com.atollic.truestudio.toolchain_options.vendor.1725191763"/>
+							<tool id="com.atollic.truestudio.exe.debug.toolchain.as.801860573" name="Assembler" superClass="com.atollic.truestudio.exe.debug.toolchain.as.27245505">
+								<option id="com.atollic.truestudio.as.general.incpath.521880869" superClass="com.atollic.truestudio.as.general.incpath" useByScannerDiscovery="false" valueType="includePath">
+									<listOptionValue builtIn="false" value="../src"/>
+									<listOptionValue builtIn="false" value="../Libraries/Middleware"/>
+									<listOptionValue builtIn="false" value="../Libraries/Middleware/MQTTPacket"/>
+									<listOptionValue builtIn="false" value="../Libraries/HAL"/>
+									<listOptionValue builtIn="false" value="../FreeRTOS_Source/portable/GCC/ARM_CM4F"/>
+									<listOptionValue builtIn="false" value="../FreeRTOS_Source/include"/>
+									<listOptionValue builtIn="false" value="../Libraries/CMSIS/Include"/>
+									<listOptionValue builtIn="false" value="../Libraries/Device/STM32F4xx/Include"/>
+									<listOptionValue builtIn="false" value="../Libraries/STM32F4xx_StdPeriph_Driver/inc"/>
+									<listOptionValue builtIn="false" value="../Utilities/STM32F4-Discovery"/>
+								</option>
+								<inputType id="com.atollic.truestudio.as.input.1241261258" name="Input" superClass="com.atollic.truestudio.as.input"/>
+							</tool>
+							<tool id="com.atollic.truestudio.exe.debug.toolchain.gcc.1515769852" name="C Compiler" superClass="com.atollic.truestudio.exe.debug.toolchain.gcc.2095815598">
+								<option id="com.atollic.truestudio.gcc.directories.select.2105530424" superClass="com.atollic.truestudio.gcc.directories.select" useByScannerDiscovery="false" valueType="includePath">
+									<listOptionValue builtIn="false" value="../FreeRTOS_Source/portable/GCC/ARM_CM4F"/>
+									<listOptionValue builtIn="false" value="../Libraries/Middleware/MQTTPacket"/>
+									<listOptionValue builtIn="false" value="../Libraries/Middleware"/>
+									<listOptionValue builtIn="false" value="../Libraries/HAL"/>
+									<listOptionValue builtIn="false" value="../FreeRTOS_Source/include"/>
+									<listOptionValue builtIn="false" value="../src"/>
+									<listOptionValue builtIn="false" value="../Libraries/CMSIS/Include"/>
+									<listOptionValue builtIn="false" value="../Libraries/Device/STM32F4xx/Include"/>
+									<listOptionValue builtIn="false" value="../Libraries/STM32F4xx_StdPeriph_Driver/inc"/>
+									<listOptionValue builtIn="false" value="../Utilities/STM32F4-Discovery"/>
+								</option>
+								<inputType id="com.atollic.truestudio.gcc.input.2074328606" superClass="com.atollic.truestudio.gcc.input"/>
+							</tool>
+							<tool id="com.atollic.truestudio.exe.debug.toolchain.ld.655766465" name="C Linker" superClass="com.atollic.truestudio.exe.debug.toolchain.ld.1832059458"/>
+							<tool id="com.atollic.truestudio.exe.debug.toolchain.gpp.1608214099" name="C++ Compiler" superClass="com.atollic.truestudio.exe.debug.toolchain.gpp.906992346"/>
+							<tool id="com.atollic.truestudio.exe.debug.toolchain.ldcc.1993709385" name="C++ Linker" superClass="com.atollic.truestudio.exe.debug.toolchain.ldcc.1344929071"/>
+							<tool id="com.atollic.truestudio.ar.base.1380491721" name="Archiver" superClass="com.atollic.truestudio.ar.base.47025727"/>
+							<tool id="com.atollic.truestudio.exe.debug.toolchain.secoutput.158001775" name="Other" superClass="com.atollic.truestudio.exe.debug.toolchain.secoutput.1734109223"/>
+						</toolChain>
+					</folderInfo>
 					<sourceEntries>
 						<entry excluding="portable/MemMang/heap_2.c|portable/MemMang/heap_3.c|portable/MemMang/heap_4.c|portable/MemMang/heap_5.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="FreeRTOS_Source"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Libraries"/>
