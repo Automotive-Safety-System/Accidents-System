@@ -4,7 +4,7 @@
  *  Created on: Mar 9, 2020
  *      Author: mahmo
  */
-
+#include <math.h>
 #include "stm32f4xx.h"
 #include "stm32f4xx_i2c.h"
 #include "MPU6050.h"
@@ -24,28 +24,63 @@
 
 
 
+// offset Values
+float    base_x_accel;
+float    base_y_accel;
+float    base_z_accel;
+float    base_x_gyro;
+float    base_y_gyro;
+float    base_z_gyro;
+
+float    RADIANS_TO_DEGREES ;
+//float 	 Last_Read_Time;
+
+float    last_x_angle;  // These are the filtered angles
+float    last_y_angle;
+float    last_z_angle;
+
+
 static	I2C_HandleTypeDef I2C_Handle;
 
 static MPU6050_t* MY_MPU;
 
-TaskHandle_t xTask_MPU6050_Read_RawData=NULL;
-
 static float accelScalingFactor, gyroScalingFactor;
 
 
-static void MPU6050_StructCpy(MPU6050_t *Data_Struct);
+TaskHandle_t xTask_MPU6050_Read_RawData=NULL;
+
+TickType_t Last_Read_Time;
+TickType_t Current_Read_Time;
+
+//uint16_t ACC_BUF[3][3];
+
+
+
 static void MPU6050_I2C_Config();
 static void MPU6050_Config_Init(MPU6050_t *Data_Struct);
 static void MPU6050_Init(MPU6050_t *Data_Struct);
+static void MPU6050_Get_Accel_Scale();
+static void MPU6050_Get_Gyro_Scale();
+
+static void MPU6050_Calibrate();
+
+static void MPU6050_Get_Accel_Angels();
+
+/*      HELPER Function      */
+static float get_last_x_angle();
+static float get_last_y_angle();
+static float get_last_z_angle();
+static TickType_t get_last_read_Time(void);
+static void Update_Last_Data(TickType_t Time ,float x, float y, float z);
 
 
-
+//Fucntion Definitions
+//1- i2c Handler
 static void MPU6050_StructCpy(MPU6050_t *Data_Struct)
 {
 	//Copy I2C CubeMX handle to local library
 	memcpy(MY_MPU,Data_Struct, sizeof(*Data_Struct));
 }
-
 
 
 static void MPU6050_I2C_Config()
@@ -95,7 +130,7 @@ static void MPU6050_I2C_Config()
 	RCC_APB1PeriphClockCmd(I2Cx_CLK, ENABLE);
 
 	// Set the I2C structure parameters
-	I2C_Handle.Instance=MPU6050_I2C;
+	I2C_Handle.Instance=I2Cx;
 
 	I2C_Handle.Init.I2C_ClockSpeed = MPU6050_I2C_CLOCK;
 	I2C_Handle.Init.I2C_Ack = I2C_Ack_Enable;
@@ -133,6 +168,19 @@ static void MPU6050_Config_Init(MPU6050_t *Data_Struct)
 	Data_Struct->CONFIG_DLPF = DLPF_184A_188G_Hz;
 	Data_Struct->Gyro_Full_Scale = FS_SEL_250;
 	Data_Struct->Sleep_Mode_Bit = 0;  //1: sleep mode, 0: normal mode
+
+	base_x_accel=0;
+	base_y_accel=0;
+	base_z_accel=0;
+
+	base_x_gyro=0;
+	base_y_gyro=0;
+	base_z_gyro=0;
+
+	RADIANS_TO_DEGREES = 180/3.14159;
+	last_x_angle=0;
+	last_y_angle=0;
+	last_z_angle=0;
 }
 
 static void MPU6050_Init(MPU6050_t *Data_Struct)
@@ -151,16 +199,16 @@ static void MPU6050_Init(MPU6050_t *Data_Struct)
 		// power management register 0X6B we should write all 0's to wake the sensor up
 		Buffer = 0x08;
 		HAL_I2C_Mem_Write(&I2C_Handle, MPU6050_ADDR, PWR_MAGT_1_REG,&Buffer, 1);
+
 		//10 ms delay
-	//	for(check=0;check<1000;check++);
 
 
 		Buffer = Data_Struct ->ClockSource & 0x07; //change the 7th bits of register
 		Buffer |= (Data_Struct ->Sleep_Mode_Bit << 6) &0x40;
 		HAL_I2C_Mem_Write(&I2C_Handle, MPU6050_ADDR, PWR_MAGT_1_REG,&Buffer, 1);
+
 		//10 ms delay
 		
-	//	for(check=0;check<1000;check++);
 
 
 		//Set the Digital Low Pass Filter
@@ -183,7 +231,7 @@ static void MPU6050_Init(MPU6050_t *Data_Struct)
 		Buffer = 0x07;
 		HAL_I2C_Mem_Write(&I2C_Handle, MPU6050_ADDR, SMPLRT_DIV_REG, &Buffer, 1);
 		
-		//STM_EVAL_LEDOn(2);
+		STM_EVAL_LEDOn(2);
 	}
 
 	//Accelerometer Scaling Factor, Set the Accelerometer and Gyroscope Scaling Factor
@@ -233,6 +281,7 @@ static void MPU6050_Init(MPU6050_t *Data_Struct)
 
 }
 
+
 extern void MPU6050_Module_INIT(MPU6050_t *Data_Struct)
 {
 	 MPU6050_StructCpy(Data_Struct);
@@ -241,60 +290,161 @@ extern void MPU6050_Module_INIT(MPU6050_t *Data_Struct)
 	 MPU6050_Init(MY_MPU);
 }
 
-extern void MPU6050_Read_All()
+
+
+void MPU6050_Read_All(void)
 {
 
 	uint8_t Rec_Data[14];
 	int16_t temp;
 
-	while(1){
+
 	// Read 14 BYTES of data starting from ACCEL_XOUT_H register
+	while(1){
+		Current_Read_Time=xTaskGetTickCount();
+		HAL_I2C_Mem_Read_IT(&I2C_Handle, MPU6050_ADDR, ACCEL_XOUT_H_REG,Rec_Data, 14);
+		MY_MPU->Accel_X_RAW = (int16_t)(Rec_Data[0] << 8 | Rec_Data [1]);
 
-	HAL_I2C_Mem_Read_IT(&I2C_Handle, MPU6050_ADDR, ACCEL_XOUT_H_REG,Rec_Data, 14);
-	MY_MPU->Accel_X_RAW = (int16_t)(Rec_Data[0] << 8 | Rec_Data [1]);
+		MY_MPU->Accel_Y_RAW = (int16_t)(Rec_Data[2] << 8 | Rec_Data [3]);
+		MY_MPU->Accel_Z_RAW = (int16_t)(Rec_Data[4] << 8 | Rec_Data [5]);
+		temp = (int16_t)(Rec_Data[6] << 8 | Rec_Data [7]);
+		MY_MPU->Temperature=temp;
+		MY_MPU->Gyro_X_RAW = (int16_t)(Rec_Data[8] << 8 | Rec_Data [9]);
+		MY_MPU->Gyro_Y_RAW = (int16_t)(Rec_Data[10] << 8 | Rec_Data [11]);
+		MY_MPU->Gyro_Z_RAW = (int16_t)(Rec_Data[12] << 8 | Rec_Data [13]);
 
-	MY_MPU->Accel_Y_RAW = (int16_t)(Rec_Data[2] << 8 | Rec_Data [3]);
-	MY_MPU->Accel_Z_RAW = (int16_t)(Rec_Data[4] << 8 | Rec_Data [5]);
-	temp = (int16_t)(Rec_Data[6] << 8 | Rec_Data [7]);
-	MY_MPU->Temperature=temp;
-	MY_MPU->Gyro_X_RAW = (int16_t)(Rec_Data[8] << 8 | Rec_Data [9]);
-	MY_MPU->Gyro_Y_RAW = (int16_t)(Rec_Data[10] << 8 | Rec_Data [11]);
-	MY_MPU->Gyro_Z_RAW = (int16_t)(Rec_Data[12] << 8 | Rec_Data [13]);
-//	printf("Accel_X: %d\n",MY_MPU->Accel_X_RAW);
-//	printf("Accel_Y: %d\n",MY_MPU->Accel_Y_RAW);
-//	printf("Accel_Z :%d\n",MY_MPU->Accel_Z_RAW );
-//	printf("GYR_X: %d\n",MY_MPU->Gyro_X_RAW);
-//	printf("GYR_Y: %d\n",MY_MPU->Gyro_Y_RAW);
-//	printf("GYR_Z: %d\n",MY_MPU->Gyro_Z_RAW);
-	vTaskDelay(pdMS_TO_TICKS(100));
-
+		vTaskDelay(pdMS_TO_TICKS(250));
 	}
 
 }
+
 //10- Get Accel scaled data (g unit of gravity, 1g = 9.81m/s2)
-void MPU6050_Get_Accel_Scale()
+static void MPU6050_Get_Accel_Scale()
 {
 
+	//Accel Scale data
+	MY_MPU->Ax = ((MY_MPU->Accel_X_RAW+0.0f-base_x_accel)*accelScalingFactor);
+	MY_MPU->Ay= ((MY_MPU->Accel_Y_RAW+0.0f-base_y_accel)*accelScalingFactor);
+	MY_MPU->Az = ((MY_MPU->Accel_Z_RAW+0.0f-base_z_accel)*accelScalingFactor);
+	/*temp1=MY_MPU->Ax ;
+	printf("Accel_X: %f    ",temp1);
+	temp2=MY_MPU->Ay ;
+	printf("Accel_X: %f    ",temp2);
+	temp3=MY_MPU->Az ;
+	printf("Accel_X: %f    \n",temp3);*/
+
+}
+static void MPU6050_Get_Accel_Angels()
+{
+	//Roll angle
+	MY_MPU->Acc_Agnle_X=atan(MY_MPU->Ay/sqrt(pow(MY_MPU->Ax,2)+pow(MY_MPU->Az,2)))*RADIANS_TO_DEGREES;
+
+	//pitch angle
+	MY_MPU->Acc_Agnle_Y=atan(MY_MPU->Ax/sqrt(pow(MY_MPU->Ay,2)+pow(MY_MPU->Az,2)))*RADIANS_TO_DEGREES;
+	//yaw angle
+	MY_MPU->Acc_Agnle_Z=0;
+}
+
+//13- Get Gyro scaled data
+static void MPU6050_Get_Gyro_Scale()
+{
+	//Accel Scale data
+	MY_MPU->Gx = ((MY_MPU->Gyro_X_RAW+0.0f-base_x_gyro)*gyroScalingFactor);
+	MY_MPU->Gy=  ((MY_MPU->Gyro_Y_RAW+0.0f-base_y_gyro)*gyroScalingFactor);
+	MY_MPU->Gz = ((MY_MPU->Gyro_Z_RAW+0.0f-base_y_gyro)*gyroScalingFactor);
+	/*printf("GYR_X: %f\n",MY_MPU->Gx);
+	printf("GYR_Y: %f\n",MY_MPU->Gy);
+	printf("GYR_Z: %f\n",MY_MPU->Gz);
+*/
+}
+static void MPU6050_Get_Gyro_Angels()
+{
+	float dt;
+	//time in second
+	//to be checked
+	dt=((Current_Read_Time-Last_Read_Time)/configTICK_RATE_HZ);
+
+	MY_MPU->Gyro_Agnle_X=MY_MPU->Gx * dt + get_last_x_angle();
+	MY_MPU->Gyro_Agnle_Y=MY_MPU->Gy * dt + get_last_y_angle();
+	MY_MPU->Gyro_Agnle_Z=MY_MPU->Gz * dt + get_last_z_angle();
 
 }
 
-////11- Get Accel calibrated data
-//void MPU6050_Get_Accel_Cali()
-//{
-//
-//}
-////13- Get Gyro scaled data
-//void MPU6050_Get_Gyro_Scale()
-//{
-//
-//}
-////14- Accel Calibration
-//void _Accel_Cali()
-//{
-//
-//}
+static void MPU6050_Get_ComplemtaryFilter_Angels()
+{
+	//to be changed
+	float alpha = 0.96;
+
+
+	MY_MPU->ComFilter_Angle_X=alpha*(MY_MPU->Gyro_Agnle_X)+(1.0-alpha)*(MY_MPU->Acc_Agnle_X);
+	MY_MPU->ComFilter_Angle_Y=alpha*(MY_MPU->Gyro_Agnle_Y)+(1.0-alpha)*(MY_MPU->Acc_Agnle_Y);
+	MY_MPU->ComFilter_Angle_Z=MY_MPU->Gyro_Agnle_Z;
+}
+
+//to be calibrated on Arduino
+static void MPU6050_Calibrate()
+{
+	  int                   num_readings = 10;
+	  float                 x_accel = 0;
+	  float                 y_accel = 0;
+	  float                 z_accel = 0;
+	  float                 x_gyro = 0;
+	  float                 y_gyro = 0;
+	  float                 z_gyro = 0;
+	  uint8_t Rec_Data[14];
+
+
+	  // Read and average the raw values from the IMU
+	  for (int i = 0; i < num_readings; i++) {
+		  HAL_I2C_Mem_Read_IT(&I2C_Handle, MPU6050_ADDR, ACCEL_XOUT_H_REG,Rec_Data, 14);
+		  x_accel += (int16_t)(Rec_Data[0] << 8 | Rec_Data [1]);
+		  y_accel += (int16_t)(Rec_Data[2] << 8 | Rec_Data [3]);
+		  z_accel += (int16_t)(Rec_Data[4] << 8 | Rec_Data [5]);
+		  x_gyro  +=(int16_t)(Rec_Data[8] << 8 | Rec_Data [9]);
+		  y_gyro  += (int16_t)(Rec_Data[10] << 8 | Rec_Data [11]);
+		  z_gyro  += (int16_t)(Rec_Data[12] << 8 | Rec_Data [13]);
+	  }
+	  x_accel /=num_readings;
+	  y_accel /=num_readings;
+	  z_accel /=num_readings;
+	  x_gyro /= num_readings;
+	  y_gyro /= num_readings;
+	  z_gyro /= num_readings;
+
+	  // Store the raw calibration values globally
+	  base_x_accel = x_accel;
+	  base_y_accel = y_accel;
+	  base_z_accel = z_accel;
+	  base_x_gyro = x_gyro;
+	  base_y_gyro = y_gyro;
+	  base_z_gyro = z_gyro;
+}
 
 void HAL_I2C_EVENT_CALLBack()
 {
 	HAL_I2C_EV_IRQHandler(&I2C_Handle);
+}
+
+static TickType_t get_last_read_Time(void){
+	return Last_Read_Time;
+}
+
+
+static float get_last_x_angle(void){
+	return last_x_angle;
+}
+
+static float get_last_y_angle(void){
+	return last_y_angle;
+}
+static float get_last_z_angle(void){
+	return last_z_angle;
+}
+
+static void Update_Last_Data(TickType_t Time ,float x, float y, float z)
+{
+	Last_Read_Time=Time;
+	last_x_angle=x;
+	last_y_angle=y;
+	last_z_angle=z;
 }
