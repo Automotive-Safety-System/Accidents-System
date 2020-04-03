@@ -7,8 +7,10 @@
 
 #ifndef MPU6050_H_
 #define MPU6050_H_
+#include "FreeRTOS.h"
+#include "FreeRTOSConfig.h"
+#include "task.h"
 
-#include "MPU6050_Config.h"
 //Define Registers
 #define WHO_AM_I_REG			0x75
 #define MPU_ADDR				0x68
@@ -55,6 +57,21 @@ typedef struct  {
 	double Gz;
 
 	float   Temperature;
+
+	//Acc Angels
+	float Acc_Agnle_X;
+	float Acc_Agnle_Y;
+	float Acc_Agnle_Z;
+
+	//Gyro Angels
+	float Gyro_Agnle_X;
+	float Gyro_Agnle_Y;
+	float Gyro_Agnle_Z;
+
+	//Complentary filter Angels
+	float ComFilter_Angle_X ;
+	float ComFilter_Angle_Y ;
+	float ComFilter_Angle_Z ;
 
 	uint8_t ClockSource;
 	uint8_t Gyro_Full_Scale;
@@ -114,6 +131,7 @@ enum EXT_SYNC_SET_ENUM
 	ACCEL_YOUT_L	= 0x06,
 	ACCEL_ZOUT_L	= 0x07
 };
+
 
 
 extern void MPU6050_Module_INIT(MPU6050_t *Data_Struct);
