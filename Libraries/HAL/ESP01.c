@@ -94,11 +94,14 @@ void ESP_init(){
 
 
 		  if(strstr(acknowldge, "OK") != 0){
+				//STM_EVAL_LEDOn(LED3);
+
 			 //printf("connected to esp \n");
 			 init_flag = 1;
+			  STM_EVAL_LEDOn(LED4);
+
 		  }
 		  else if(strstr(acknowldge, "ERROR") != 0){
-			  //STM_EVAL_LEDOn(LED4);
 			  //printf("connection with esp failed");
 		  }
 
@@ -191,7 +194,7 @@ void ESP_connectAccessPointTask(void * pvParameters){
 			}
 			if(strstr(response, "WIFI CONNECTED") != 0){
 				ESP_connection_status = ESP_WIFI_CONNECTED;
-				//STM_EVAL_LEDOn(LED3);
+				STM_EVAL_LEDOn(LED3);
 			}
 			else if(strstr(response, "+CWJAP:1") != 0){
 				ESP_connection_status = ESP_CONNECTION_TIMEOUT;
@@ -315,55 +318,59 @@ int ESP_ReadDataRT(unsigned char *address, unsigned int maxbytes){
 void ESP_ReadDataTask(void * pvParameters){
 
 	char response[100]={'\0'};
+	char* response_ptr;
 	uint8_t i = 0;
+	char length_string[20]={'\0'};
 	int32_t length = 0;
 	char c;
 	for(;;){
-		//TODO check semaphores first to see if it's allowed to work
+
 		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED && resource_allowed == AVAILABLE){
 
 			if (!USART_BufferEmpty(ESP_USART)){
-				for(i = 0 ; i < 5 ; i++){
-					if ((c = USART_ReceiveData(ESP_USART))!=0){
-						response[i] = c;
-						i++;
-					}
-				}
-			}
-
-
-			if(strstr(response, "+IPD") != 0){
+				vTaskDelay(pdMS_TO_TICKS(100));
 				resource_allowed = RECEIVING;
-				i = 0;
-				memset(response, 0, 100*sizeof(char));
-				while (!USART_BufferEmpty(ESP_USART)){
+				while(!USART_BufferEmpty(ESP_USART)){
 					if ((c = USART_ReceiveData(ESP_USART))!=0){
-						if (c == ':')
-							break;
 						response[i] = c;
 						i++;
+
+
+
 					}
 				}
-				length = atol(response);
-			}
 
-			while (!USART_BufferEmpty(ESP_USART)){
-				if ((c = USART_ReceiveData(ESP_USART))!=0){
-					TM_BUFFER_Write(&ESP_Receive_Buffer_obj, &c, 1);
-					length--;
-					if (length == 0 )
-						break;
+
+				i = 0;
+				if(strstr(response, "+IPD") != 0){
+					response_ptr = strstr(response, "+IPD,") +5;
+					STM_EVAL_LEDToggle(LED5);
+
+					while (response_ptr[i] != ':'){
+							length_string[i] = response_ptr[i];
+							i++;
+						}
+					i++;
+					length = atol(length_string);
+
+
+					while (i < 100){
+							TM_BUFFER_Write(&ESP_Receive_Buffer_obj, &response_ptr[i], 1);
+							i++;
+							length--;
+							if (length == 0 ){
+								resource_allowed = AVAILABLE;
+								break;
+							}
+						}
+					memset(response, 0, 100*sizeof(char));
+
 				}
 			}
 
-			//if (length == 0){
-				resource_allowed = AVAILABLE;
-			//}
 		}
 
-		 else {
-			 //resource_allowed = AVAILABLE;
-		 }
+
 
 		vTaskDelay(pdMS_TO_TICKS(2));
 	}
@@ -408,20 +415,40 @@ void ESP_SendDataTask(void * pvParameters){
 	char command[20]={'\0'};
 	uint8_t i = 0;
 	uint32_t length ;
+	char length_string[20];
 	char c;
+
 
 	for(;;){
 		if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED && (resource_allowed== AVAILABLE||SENDING)){
 
 			if(TM_BUFFER_GetFull(&ESP_Send_Buffer_obj) != 0){
+
 				resource_allowed = SENDING;
 				i = 0;
 				length = TM_BUFFER_GetFull(&ESP_Send_Buffer_obj);
+				itoa(length, length_string, 20);
 				memset(command, 0, 20*sizeof(char));
-				sprintf(command, "AT+CIPSEND=%lu%s", length,"\r\n");
+				sprintf(command, "AT+CIPSEND=%s%s", length_string,"\r\n");
 				ESP_sendBlindCommand(command);
-				ESP_sendBlindCommand("AT+CIPSTATUS");
-				vTaskDelay(pdMS_TO_TICKS(1));
+				vTaskDelay(pdMS_TO_TICKS(50));
+
+				for (i=0 ; i<length ; i++){
+					resource_allowed = SENDING;
+					TM_BUFFER_Read(&ESP_Send_Buffer_obj, &c, 1);
+					USART_SendData(ESP_USART, c);
+				}
+				TM_BUFFER_Reset(&ESP_Send_Buffer_obj);
+				//USART_SendData(ESP_USART, '\r');
+				//USART_SendData(ESP_USART, '\n');
+
+				vTaskDelay(pdMS_TO_TICKS(1000));
+
+				//if (!USART_BufferEmpty(ESP_USART)){
+
+		}
+
+			else if (resource_allowed == SENDING){
 				while (!USART_BufferEmpty(ESP_USART)){
 					if ((c = USART_ReceiveData(ESP_USART))!=0){
 						response[i] = c;
@@ -429,23 +456,13 @@ void ESP_SendDataTask(void * pvParameters){
 					}
 				}
 
-				if(strstr(response, "STATUS:3") != 0){
-					for (i=0 ; i<length ; i++){
-						resource_allowed = SENDING;
-						TM_BUFFER_Read(&ESP_Send_Buffer_obj, &c, 1);
-						USART_SendData(ESP_USART, c);
-					}
-					resource_allowed = AVAILABLE;
-				}
-
-				else if(strstr(response, "STATUS:4") != 0){
-					ESP_tcp_status = TCP_NOT_CONNECTED;
+				if(strstr(&response[40], "SEND OK\r\n") != 0)
+									resource_allowed = AVAILABLE;
 				}
 			}
-		}
 
 
 	}
-	vTaskDelay(pdMS_TO_TICKS(500));
+	vTaskDelay(pdMS_TO_TICKS(100));
 
 }

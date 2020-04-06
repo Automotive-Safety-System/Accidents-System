@@ -18,7 +18,7 @@ extern TaskHandle_t xTask_MPU6050_Read_RawData;
 void OS_INIT(void){
 
 
-	xTaskCreate(GPS_update_task,
+/*	xTaskCreate(GPS_update_task,
 				"gps_update",
 				200,
 				NULL,
@@ -30,7 +30,7 @@ void OS_INIT(void){
 					200,
 					NULL,
 					5,
-					&handle_gsm_os_init);
+					&handle_gsm_os_init); */
 
 	xTaskCreate(ESP_connectAccessPointTask,
 				"esp_connectAP",
@@ -52,13 +52,21 @@ void OS_INIT(void){
 				NULL,
 				5,
 				NULL);
-	  xTaskCreate(MPU6050_Read_All,
+
+	xTaskCreate(ESP_ReadDataTask,
+					"esp_receiveData",
+					200,
+					NULL,
+					5,
+					NULL);
+
+/*	  xTaskCreate(MPU6050_Read_All,
 			  	  "MPU6050_ReadData",
 				  200,
 				  NULL,
 				  5 ,
 				  &xTask_MPU6050_Read_RawData);
-
+*/
 }
 
 
