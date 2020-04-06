@@ -8,7 +8,7 @@
 #ifndef MPU_0_CONFIG_H_
 #define MPU_0_CONFIG_H_
 
-#define MPU6050_I2C                          I2C1
+#define I2Cx                          I2C1
 #define I2Cx_CLK                      RCC_APB1Periph_I2C1
 #define I2Cx_SDA_GPIO_CLK             RCC_AHB1Periph_GPIOB
 #define I2Cx_SDA_PIN                  GPIO_Pin_9
