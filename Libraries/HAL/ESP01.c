@@ -274,13 +274,21 @@ void ESP_StartTCPTask(void * pvParameters){
 			}
 			if(strstr(response, "CONNECT") != 0){
 				ESP_tcp_status = TCP_CONNECTED;
-				//STM_EVAL_LEDOn(LED3);
+				STM_EVAL_LEDOn(LED5);
 			}
 		}
 		vTaskDelay(500);
 	}
 
 }
+
+int ESP_TCPStatus(void){
+	if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED)
+		return 1;
+	else
+		return 0;
+}
+
 uint8_t ESP_ReadData(char* user_buffer, char delimeter){
 //add flag to check first if we expect data
 //read data after the form  +IPD, length:data_here
@@ -344,7 +352,7 @@ void ESP_ReadDataTask(void * pvParameters){
 				i = 0;
 				if(strstr(response, "+IPD") != 0){
 					response_ptr = strstr(response, "+IPD,") +5;
-					STM_EVAL_LEDToggle(LED5);
+
 
 					while (response_ptr[i] != ':'){
 							length_string[i] = response_ptr[i];

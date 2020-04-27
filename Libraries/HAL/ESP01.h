@@ -9,7 +9,7 @@
 #define HAL_ESP01_H_
 
 #include <stdint.h>
-
+#define	ESP_USART					USART2
 #define ESP_MODE_STATION				1
 #define ESP_MODE_ACCESSPOINT			2
 #define ESP_MODE_BOTH_STA				3
@@ -33,6 +33,7 @@ void ESP_connectAccessPointTask(void * pvParameters);
 uint8_t ESP_WIFIMode(uint8_t mode);
 uint8_t ESP_ConnectionMode(uint8_t mode);
 uint8_t ESP_ApplicationMode(uint8_t mode);
+int ESP_TCPStatus(void);
 uint8_t ESP_StartTCP(char* Domain, char* Port);
 void ESP_StartTCPTask(void * pvParameters);
 uint8_t ESP_ReadData(char* user_buffer, char delimeter);
