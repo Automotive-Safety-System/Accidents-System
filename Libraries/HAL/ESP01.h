@@ -42,4 +42,5 @@ void ESP_ReadDataTask(void * pvParameters);
 uint8_t ESP_SendData(uint32_t length, char* data);
 int ESP_SendDataRT(unsigned char *address, unsigned int bytes);
 void ESP_SendDataTask(void * pvParameters);
+int ESP_getSendBufferFree();
 #endif /* HAL_ESP01_H_ */

@@ -421,8 +421,8 @@ void ESP_SendDataTask(void * pvParameters){
 
 	char response[100]={'\0'};
 	char command[20]={'\0'};
-	uint8_t i = 0;
-	uint32_t length ;
+	uint16_t i = 0;
+	int length ;
 	char length_string[20];
 	char c;
 
@@ -437,7 +437,7 @@ void ESP_SendDataTask(void * pvParameters){
 				length = TM_BUFFER_GetFull(&ESP_Send_Buffer_obj);
 				itoa(length, length_string, 20);
 				memset(command, 0, 20*sizeof(char));
-				sprintf(command, "AT+CIPSEND=%s%s", length_string,"\r\n");
+				sprintf(command, "AT+CIPSEND=%d%s", length,"\r\n");
 				ESP_sendBlindCommand(command);
 				vTaskDelay(pdMS_TO_TICKS(50));
 
@@ -473,4 +473,9 @@ void ESP_SendDataTask(void * pvParameters){
 	}
 	vTaskDelay(pdMS_TO_TICKS(100));
 
+}
+
+
+int ESP_getSendBufferFree(){
+	return TM_BUFFER_GetFree(&ESP_Send_Buffer_obj);
 }
