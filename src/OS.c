@@ -72,21 +72,21 @@ void OS_INIT(void){
 				&xTask_MPU6050_Read_RawData);
 
 
-/*	xTaskCreate(MQTT_SendDataTask,
+	xTaskCreate(MQTT_SendDataTask,
 				"Pub",
 				400,
 				NULL,
 				5,
 				NULL);
 
-*/
-	xTaskCreate(socket_SendDataTask,
+
+/*	xTaskCreate(socket_SendDataTask,
 				"Pub",
 				200,
 				NULL,
 				5,
 				NULL);
-
+*/
 
 }
 
