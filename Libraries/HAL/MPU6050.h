@@ -136,6 +136,8 @@ enum EXT_SYNC_SET_ENUM
 
 extern void MPU6050_Module_INIT();
 void MPU6050_Read_All();
+void Accident_Detection();
+
 void HAL_I2C_EVENT_CALLBack(void);
 
 

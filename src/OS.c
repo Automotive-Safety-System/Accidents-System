@@ -1,9 +1,3 @@
-/*
- * OS.c
- *
- *  Created on: Feb 23, 2020
- *      Author: Hazem
- */
 #include "OS.h"
 #include "tm_stm32_gps.h"
 #include "GSM.h"
@@ -17,6 +11,7 @@ extern TaskHandle_t handle_gsm_os_init;
 
 extern TaskHandle_t xTask_MPU6050_Read_RawData;
 
+extern TaskHandle_t xTask_AccidentDetection_Declration;
 
 
 void OS_INIT(void){
@@ -87,7 +82,12 @@ void OS_INIT(void){
 				5,
 				NULL);
 */
+	  xTaskCreate(Accident_Detection,
+			  "Accident_Decleration",
+			  500,
+			  NULL,
+			  3 ,
+			  &xTask_AccidentDetection_Declration);
+
 
 }
-
-
