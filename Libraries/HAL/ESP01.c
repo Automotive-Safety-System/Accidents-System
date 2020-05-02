@@ -274,13 +274,21 @@ void ESP_StartTCPTask(void * pvParameters){
 			}
 			if(strstr(response, "CONNECT") != 0){
 				ESP_tcp_status = TCP_CONNECTED;
-				//STM_EVAL_LEDOn(LED3);
+				STM_EVAL_LEDOn(LED5);
 			}
 		}
 		vTaskDelay(500);
 	}
 
 }
+
+int ESP_TCPStatus(void){
+	if (ESP_connection_status == ESP_WIFI_CONNECTED && ESP_tcp_status == TCP_CONNECTED)
+		return 1;
+	else
+		return 0;
+}
+
 uint8_t ESP_ReadData(char* user_buffer, char delimeter){
 //add flag to check first if we expect data
 //read data after the form  +IPD, length:data_here
@@ -344,7 +352,7 @@ void ESP_ReadDataTask(void * pvParameters){
 				i = 0;
 				if(strstr(response, "+IPD") != 0){
 					response_ptr = strstr(response, "+IPD,") +5;
-					STM_EVAL_LEDToggle(LED5);
+
 
 					while (response_ptr[i] != ':'){
 							length_string[i] = response_ptr[i];
@@ -413,8 +421,8 @@ void ESP_SendDataTask(void * pvParameters){
 
 	char response[100]={'\0'};
 	char command[20]={'\0'};
-	uint8_t i = 0;
-	uint32_t length ;
+	uint16_t i = 0;
+	int length ;
 	char length_string[20];
 	char c;
 
@@ -429,7 +437,7 @@ void ESP_SendDataTask(void * pvParameters){
 				length = TM_BUFFER_GetFull(&ESP_Send_Buffer_obj);
 				itoa(length, length_string, 20);
 				memset(command, 0, 20*sizeof(char));
-				sprintf(command, "AT+CIPSEND=%s%s", length_string,"\r\n");
+				sprintf(command, "AT+CIPSEND=%d%s", length,"\r\n");
 				ESP_sendBlindCommand(command);
 				vTaskDelay(pdMS_TO_TICKS(50));
 
@@ -465,4 +473,9 @@ void ESP_SendDataTask(void * pvParameters){
 	}
 	vTaskDelay(pdMS_TO_TICKS(100));
 
+}
+
+
+int ESP_getSendBufferFree(){
+	return TM_BUFFER_GetFree(&ESP_Send_Buffer_obj);
 }
