@@ -14,6 +14,8 @@
 extern TaskHandle_t handle_gsm_os_init;
 
 extern TaskHandle_t xTask_MPU6050_Read_RawData;
+extern TaskHandle_t xTask_AccidentDetection_Declration;
+
 
 void OS_INIT(void){
 
@@ -60,13 +62,21 @@ void OS_INIT(void){
 					5,
 					NULL);
 
-/*	  xTaskCreate(MPU6050_Read_All,
+	  xTaskCreate(MPU6050_Read_All,
 			  	  "MPU6050_ReadData",
 				  200,
 				  NULL,
 				  5 ,
 				  &xTask_MPU6050_Read_RawData);
-*/
+
+
+	  xTaskCreate(Accident_Detection,
+			  	  "Accident_Decleration",
+				  500,
+				  NULL,
+				  3 ,
+				  &xTask_AccidentDetection_Declration);
+
 }
 
 

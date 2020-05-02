@@ -11,6 +11,8 @@
 #include "MPU6050.h"
 #include "MPU6050_Config.h"
 #include "stm32f4_discovery.h"
+#include "queue.h"
+#include "semphr.h"
 
 
 
@@ -25,6 +27,14 @@
 #define MPU6050_I_AM				0x68
 
 
+// Accident Fliping Constants
+#define MAX_FLIPPING_Angle  (float)(60.0)
+#define MIN_FLIPPING_Angle  (float)(-60.0)
+
+
+#define ACCIDENT_DECETED_FLIPPING 	2
+
+#define ACCIDENT_DECETED_Crash		3
 
 
 // offset Values
@@ -51,11 +61,19 @@ static float accelScalingFactor, gyroScalingFactor;
 
 
 TaskHandle_t xTask_MPU6050_Read_RawData=NULL;
+TaskHandle_t xTask_AccidentDetection_Declration=NULL;
+
 
 TickType_t Last_Read_Time;
 TickType_t Current_Read_Time;
 
-//uint16_t ACC_BUF[3][3];
+int16_t ACCE_BUF[3][3];
+int16_t GYRO_BUF[3][3];
+
+uint16_t LAST_ACC_Mag;
+
+xQueueHandle Accident_Detection_Queue;
+xSemaphoreHandle Accident_Detection_semphr;
 
 
 
@@ -64,10 +82,15 @@ static void MPU6050_Config_Init(MPU6050_t *Data_Struct);
 static void MPU6050_Init(MPU6050_t *Data_Struct);
 static void MPU6050_Get_Accel_Scale();
 static void MPU6050_Get_Gyro_Scale();
+static void MPU6050_Get_ComplemtaryFilter_Angels(MPU6050_t *Data_Struct);
+static void MPU6050_Get_Gyro_Angels(MPU6050_t *Data_Struct);
 
 static void MPU6050_Calibrate();
 
 static void MPU6050_Get_Accel_Angels();
+
+
+
 
 /*      HELPER Function      */
 static float get_last_x_angle();
@@ -75,6 +98,14 @@ static float get_last_y_angle();
 static float get_last_z_angle();
 static TickType_t get_last_read_Time(void);
 static void Update_Last_Data(TickType_t Time ,float x, float y, float z);
+static void Update_Buffer();
+static uint16_t get_last_Acc_Magnitude(void);
+
+static void set_last_Acc_Magnitude(uint16_t Mag);
+
+
+
+
 
 
 //Fucntion Definitions
@@ -168,10 +199,10 @@ static void MPU6050_I2C_Config()
 
 static void MPU6050_Config_Init(MPU6050_t *Data_Struct)
 {
-	Data_Struct->Accel_Full_Scale = AFS_SEL_2g;
+	Data_Struct->Accel_Full_Scale = AFS_SEL_16g;
 	Data_Struct->ClockSource = Internal_8MHz;
 	Data_Struct->CONFIG_DLPF = DLPF_184A_188G_Hz;
-	Data_Struct->Gyro_Full_Scale = FS_SEL_250;
+	Data_Struct->Gyro_Full_Scale = FS_SEL_2000;
 	Data_Struct->Sleep_Mode_Bit = 0;  //1: sleep mode, 0: normal mode
 	/*printf("%d\n",Data_Struct->Accel_Full_Scale);
 	printf("%d\n",MY_MPU.Accel_Full_Scale);*/
@@ -180,18 +211,28 @@ static void MPU6050_Config_Init(MPU6050_t *Data_Struct)
 	gyroScalingFactor=0;
 
 
-	base_x_accel=-2290;
+/*	base_x_accel=-2290;
 	base_y_accel=165;
 	base_z_accel=960;
 
 	base_x_gyro=222;
 	base_y_gyro=82;
-	base_z_gyro=24;
+	base_z_gyro=24;*/
+/*  offsets for +/- 16g sensitivity*/
+	base_x_accel=-290.4;
+	base_y_accel=20.652;
+	base_z_accel=120;
+
+	base_x_gyro=27.7;
+	base_y_gyro=10.3;
+	base_z_gyro=3;
 
 	RADIANS_TO_DEGREES = 180/3.14159;
 	last_x_angle=0;
 	last_y_angle=0;
 	last_z_angle=0;
+
+	LAST_ACC_Mag=0;
 }
 
 static void MPU6050_Init(MPU6050_t *Data_Struct)
@@ -306,9 +347,14 @@ static void MPU6050_Init(MPU6050_t *Data_Struct)
 extern void MPU6050_Module_INIT()
 {
 	// MPU6050_StructCpy(&Data_Struct);
-	 MPU6050_I2C_Config();
-	 MPU6050_Config_Init(&MY_MPU);
-	 MPU6050_Init(&MY_MPU);
+	 Accident_Detection_Queue=xQueueCreate( 1, sizeof( unsigned int ) );
+	 vSemaphoreCreateBinary( Accident_Detection_semphr );
+	  if((Accident_Detection_Queue!=NULL)&&(Accident_Detection_semphr!=NULL)){
+
+		 MPU6050_I2C_Config();
+		 MPU6050_Config_Init(&MY_MPU);
+		 MPU6050_Init(&MY_MPU);
+	 }
 }
 
 
@@ -318,88 +364,159 @@ void MPU6050_Read_All()
 
 	uint8_t Rec_Data[14]={0};
 	int16_t temp;
-
+	int16_t counter;
 
 	// Read 14 BYTES of data starting from ACCEL_XOUT_H register
 	while(1){
 		Current_Read_Time=xTaskGetTickCount();
 
 		if(HAL_I2C_Mem_Read(&I2C_Handle, MPU6050_ADDR, ACCEL_XOUT_H_REG,Rec_Data,14)==HAL_OK){
-			//STM_EVAL_LEDToggle(LED6);
+			STM_EVAL_LEDToggle(LED6);
 		}
 		/*temp=ACCEL_XOUT_H_REG;
 		HAL_I2C_Master_Transmit(&I2C_Handle,MPU6050_ADDR,&temp,1);
 		HAL_I2C_Master_Receive(&I2C_Handle,MPU6050_ADDR,Rec_Data,2);*/
 
-		MY_MPU.Accel_X_RAW= (int16_t)(Rec_Data[0] << 8 | Rec_Data [1]);
+		ACCE_BUF[0][counter]= ((int16_t)(Rec_Data[0] << 8 | Rec_Data [1]));//Acc X
 
-		MY_MPU.Accel_Y_RAW= (int16_t)(Rec_Data[2] << 8 | Rec_Data [3]);
+		ACCE_BUF[1][counter]= ((int16_t)(Rec_Data[2] << 8 | Rec_Data [3]));//Acc Y
 
-		MY_MPU.Accel_Z_RAW= (int16_t)(Rec_Data[4] << 8 | Rec_Data [5]);
+		ACCE_BUF[2][counter]= ((int16_t)(Rec_Data[4] << 8 | Rec_Data [5]));//Acc Z
 
 		temp = (int16_t)(Rec_Data[6] << 8 | Rec_Data [7]);
 		MY_MPU.Temperature=temp;
 
-		MY_MPU.Gyro_X_RAW = (int16_t)(Rec_Data[8] << 8 | Rec_Data [9]);
+		GYRO_BUF[0][counter] =((int16_t)(Rec_Data[8] << 8 | Rec_Data [9]));//Gryro X
 
-		MY_MPU.Gyro_Y_RAW= (int16_t)(Rec_Data[10] << 8 | Rec_Data [11]);
+		GYRO_BUF[1][counter] = ((int16_t)(Rec_Data[10] << 8 | Rec_Data [11]));//Gryro Y
 
-		MY_MPU.Gyro_Z_RAW= (int16_t)(Rec_Data[12] << 8 | Rec_Data [13]);
+		GYRO_BUF[2][counter] = ((int16_t)(Rec_Data[12] << 8 | Rec_Data [13]));//Gryro Z
 
+
+
+		counter++;
+		if(counter==2)
+		{
+			counter=0;
+			/*mean value of data reading Acc */
+			MY_MPU.Accel_X_RAW=(int16_t)(ACCE_BUF[0][0]+ACCE_BUF[0][1]+ACCE_BUF[0][2]/3.0);
+			MY_MPU.Accel_Y_RAW=(int16_t)(ACCE_BUF[1][0]+ACCE_BUF[1][1]+ACCE_BUF[1][2]/3.0);
+			MY_MPU.Accel_Z_RAW=(int16_t)(ACCE_BUF[2][0]+ACCE_BUF[2][1]+ACCE_BUF[2][2]/3.0);
+
+			/*mean value of data reading Gryo */
+			MY_MPU.Gyro_X_RAW=(int16_t)(GYRO_BUF[0][0]+GYRO_BUF[1][0]+GYRO_BUF[2][0]/3.0);
+			MY_MPU.Gyro_Y_RAW=(int16_t)(GYRO_BUF[0][1]+GYRO_BUF[1][1]+GYRO_BUF[2][2]/3.0);
+			MY_MPU.Gyro_Z_RAW=(int16_t)(GYRO_BUF[0][2]+GYRO_BUF[1][2]+GYRO_BUF[2][2]/3.0);
+
+
+
+			/*Data processing */
+
+			MPU6050_Get_Accel_Scale(&MY_MPU);
+			MPU6050_Get_Gyro_Scale(&MY_MPU);
+			MPU6050_Get_Accel_Angels(&MY_MPU);
+			MPU6050_Get_Gyro_Angels(&MY_MPU);
+			MPU6050_Get_ComplemtaryFilter_Angels(&MY_MPU);
+
+
+			xSemaphoreGive( Accident_Detection_semphr);
+			Update_Last_Data(Current_Read_Time,MY_MPU.ComFilter_Angle_X,MY_MPU.ComFilter_Angle_Y,MY_MPU.ComFilter_Angle_Z);
+
+
+		}
 
 
 
 /*
-		printf("%d	\t",MY_MPU.Accel_X_RAW);
+		printf("%d	\t",MY_MPU.Accel_X_RAW+(int16_t)base_x_accel);
 
-		printf("%d \t",MY_MPU.Accel_Y_RAW);
+		printf("%d \t",MY_MPU.Accel_Y_RAW+(int16_t)base_y_accel);
 
-		printf("%d \t",MY_MPU.Accel_Z_RAW);
+		printf("%d \t",MY_MPU.Accel_Z_RAW+(int16_t)base_z_accel);
 
-		printf("%d \t",MY_MPU.Gyro_X_RAW);
+		printf("%d \t",MY_MPU.Gyro_X_RAW+(int16_t)base_x_gyro);
 
-		printf("%d \t",MY_MPU.Gyro_Y_RAW);
-
-		printf("%d \t\n",MY_MPU.Gyro_Z_RAW);
-
+		printf("%d \t",MY_MPU.Gyro_Y_RAW+(int16_t)base_y_gyro);
 */
 
-		MPU6050_Get_Accel_Scale(&MY_MPU);
-		MPU6050_Get_Gyro_Scale(&MY_MPU);
+/*		printf("%d \t\n",MY_MPU.Gyro_Z_RAW+(int16_t)base_z_gyro);*/
 
-		vTaskDelay(pdMS_TO_TICKS(100));
+
+
+
+		vTaskDelay(pdMS_TO_TICKS(25));
+
 	}
 
+}
+
+void Accident_Detection()
+{
+	//xSemaphoreTake( xWork, portMAX_DELAY);
+	int8_t temp;
+	portBASE_TYPE xStatus;
+	while(1)
+	{
+		xSemaphoreTake(Accident_Detection_semphr, portMAX_DELAY);
+
+
+		/* check Accident rolling over */
+		if(		  (MY_MPU.ComFilter_Angle_X>=MAX_FLIPPING_Angle)||(MY_MPU.ComFilter_Angle_X<=MIN_FLIPPING_Angle)
+				||(MY_MPU.ComFilter_Angle_Y>=MAX_FLIPPING_Angle)||(MY_MPU.ComFilter_Angle_Y<=MIN_FLIPPING_Angle)
+				||(MY_MPU.ComFilter_Angle_X>=MAX_FLIPPING_Angle)||(MY_MPU.ComFilter_Angle_X<=MIN_FLIPPING_Angle))
+		{
+			temp=ACCIDENT_DECETED_FLIPPING;
+			xStatus= xQueueSend(Accident_Detection_Queue,&temp,0);
+			if(xStatus)
+				STM_EVAL_LEDOn(LED6);
+		}
+		/* check Accident decleration */
+/*
+		if()
+		{
+			temp=ACCIDENT_DECETED_Crash;
+			xStatus= xQueueSend(Accident_Detection_Queue,&temp,0);
+			if(xStatus)
+				STM_EVAL_LEDOn(LED5);
+		}
+*/
+
+	}
 }
 
 //10- Get Accel scaled data (g unit of gravity, 1g = 9.81m/s2)
 static void MPU6050_Get_Accel_Scale(MPU6050_t *Data_Struct)
 {
 
-//	char buf[20];
+	char buf[20];
 
 	//Accel Scale data
-	Data_Struct->Ax = ((Data_Struct->Accel_X_RAW+0.0f-base_x_accel)*accelScalingFactor);
+	Data_Struct->Ax = ((Data_Struct->Accel_X_RAW+0.0f+base_x_accel)*accelScalingFactor);
 
-	Data_Struct->Ay= ((Data_Struct->Accel_Y_RAW+0.0f-base_y_accel)*accelScalingFactor);
-	Data_Struct->Az = ((Data_Struct->Accel_Z_RAW+0.0f-base_z_accel)*accelScalingFactor);
+	Data_Struct->Ay= ((Data_Struct->Accel_Y_RAW+0.0f+base_y_accel)*accelScalingFactor);
+	Data_Struct->Az = ((Data_Struct->Accel_Z_RAW+0.0f+base_z_accel)*accelScalingFactor);
 
+/*
 
-   /* gcvt(Data_Struct->Ax,5,buf);
+    gcvt(Data_Struct->Ax,5,buf);
 
 	printf("%s\t\t",buf);
 	gcvt(Data_Struct->Ay,5,buf);
 
 	printf("%s\t\t",buf);
+
+
 	gcvt(Data_Struct->Az,5,buf);
 
 	printf("%s\t\t",buf);
 */
 
 
+
 }
 static void MPU6050_Get_Accel_Angels(MPU6050_t *Data_Struct)
 {
+	char buf[20];
 	//Roll angle
 	Data_Struct->Acc_Agnle_X=atan(Data_Struct->Ay/sqrt(pow(Data_Struct->Ax,2)+pow(Data_Struct->Az,2)))*RADIANS_TO_DEGREES;
 
@@ -407,22 +524,36 @@ static void MPU6050_Get_Accel_Angels(MPU6050_t *Data_Struct)
 	Data_Struct->Acc_Agnle_Y=atan(Data_Struct->Ax/sqrt(pow(Data_Struct->Ay,2)+pow(Data_Struct->Az,2)))*RADIANS_TO_DEGREES;
 	//yaw angle
 	Data_Struct->Acc_Agnle_Z=0;
+
+
+	gcvt(Data_Struct->Acc_Agnle_X,5,buf);
+
+	printf("%s\t\t",buf);
+	gcvt(Data_Struct->Acc_Agnle_Y,5,buf);
+
+	printf("%s\t\t",buf);
+
+	gcvt(Data_Struct->Acc_Agnle_Z,5,buf);
+
+	printf("%s\t\t",buf);
+
 }
 
 //13- Get Gyro scaled data
 static void MPU6050_Get_Gyro_Scale(MPU6050_t *Data_Struct)
 {
-	//char buf[20];
+	char buf[20];
 	//Accel Scale data
 
-	Data_Struct->Gx = ((Data_Struct->Gyro_X_RAW+0.0f-base_x_gyro)*gyroScalingFactor);
-	Data_Struct->Gy=  ((Data_Struct->Gyro_Y_RAW+0.0f-base_y_gyro)*gyroScalingFactor);
-	Data_Struct->Gz = ((Data_Struct->Gyro_Z_RAW+0.0f-base_z_gyro)*gyroScalingFactor);
+	Data_Struct->Gx = ((Data_Struct->Gyro_X_RAW+0.0f+base_x_gyro)*gyroScalingFactor);
+	Data_Struct->Gy=  ((Data_Struct->Gyro_Y_RAW+0.0f+base_y_gyro)*gyroScalingFactor);
+	Data_Struct->Gz = ((Data_Struct->Gyro_Z_RAW+0.0f+base_z_gyro)*gyroScalingFactor);
+
+
 
 
 
 /*
-
    gcvt(Data_Struct->Gx,5,buf);
 
 	printf("%s\t\t",buf);
@@ -432,16 +563,20 @@ static void MPU6050_Get_Gyro_Scale(MPU6050_t *Data_Struct)
 
 
 
+
 	gcvt(Data_Struct->Gz,5,buf);
 
 	printf("%s\t\t\n",buf);
+
 */
+
 
 
 
 }
 static void MPU6050_Get_Gyro_Angels(MPU6050_t *Data_Struct)
 {
+	char buf[20];
 	float dt;
 	//time in second
 	//to be checked
@@ -451,22 +586,56 @@ static void MPU6050_Get_Gyro_Angels(MPU6050_t *Data_Struct)
 	Data_Struct->Gyro_Agnle_Y=Data_Struct->Gy * dt + get_last_y_angle();
 	Data_Struct->Gyro_Agnle_Z=Data_Struct->Gz * dt + get_last_z_angle();
 
+
+
+	   gcvt(Data_Struct->Gyro_Agnle_X,5,buf);
+
+		printf("%s\t\t",buf);
+		gcvt(Data_Struct->Gyro_Agnle_Y,5,buf);
+
+		printf("%s\t\t",buf);
+
+
+
+		gcvt(Data_Struct->Gyro_Agnle_Z,5,buf);
+
+		printf("%s\t\t",buf);
+
+
 }
 
 static void MPU6050_Get_ComplemtaryFilter_Angels(MPU6050_t *Data_Struct)
 {
+	char buf[20];
 	//to be changed
-	float alpha = 0.96;
+	float alpha = 0.98;
 
 
 	Data_Struct->ComFilter_Angle_X=alpha*(Data_Struct->Gyro_Agnle_X)+(1.0-alpha)*(Data_Struct->Acc_Agnle_X);
 	Data_Struct->ComFilter_Angle_Y=alpha*(Data_Struct->Gyro_Agnle_Y)+(1.0-alpha)*(Data_Struct->Acc_Agnle_Y);
-	Data_Struct->ComFilter_Angle_Z=Data_Struct->Gyro_Agnle_Z;
+	Data_Struct->ComFilter_Angle_Z=alpha*(Data_Struct->Gyro_Agnle_Z)+(1.0-alpha)*(Data_Struct->Acc_Agnle_Z);
+
+
+	gcvt(Data_Struct->ComFilter_Angle_X,5,buf);
+
+	printf("%s\t\t",buf);
+
+	gcvt(Data_Struct->ComFilter_Angle_Y,5,buf);
+
+	printf("%s\t\t",buf);
+
+
+	gcvt(Data_Struct->ComFilter_Angle_Z,5,buf);
+
+	printf("%s\t\t\n",buf);
+
+
 }
 
 //to be calibrated on Arduino
 static void MPU6050_Calibrate()
 {
+	/*char buf[20];*/
 	  int                   num_readings = 10;
 	  float                 x_accel = 0;
 	  float                 y_accel = 0;
@@ -501,6 +670,31 @@ static void MPU6050_Calibrate()
 	  base_x_gyro = x_gyro;
 	  base_y_gyro = y_gyro;
 	  base_z_gyro = z_gyro;
+
+	 /* gcvt(base_x_accel,5,buf);
+
+		printf("%s\t\t",buf);
+		gcvt(base_y_accel,5,buf);
+
+		printf("%s\t\t",buf);
+
+
+		gcvt(base_z_accel,5,buf);
+
+		printf("%s\t\t",buf);
+
+		  gcvt(base_x_gyro,5,buf);
+
+				printf("%s\t\t",buf);
+				gcvt(base_y_gyro,5,buf);
+
+				printf("%s\t\t",buf);
+
+
+				gcvt(base_z_gyro,5,buf);
+
+				printf("%s\t\t\n",buf);
+*/
 }
 
 void HAL_I2C_EVENT_CALLBack()
@@ -524,12 +718,34 @@ static float get_last_z_angle(void){
 	return last_z_angle;
 }
 
+
+static uint16_t get_last_Acc_Magnitude(void){
+	return LAST_ACC_Mag;
+}
+
+
+static void set_last_Acc_Magnitude(uint16_t Mag){
+	LAST_ACC_Mag=Mag;
+}
+
+
 static void Update_Last_Data(TickType_t Time ,float x, float y, float z)
 {
 	Last_Read_Time=Time;
 	last_x_angle=x;
 	last_y_angle=y;
 	last_z_angle=z;
+}
+
+static void Update_Buffer()
+{
+	for(int i=0;i<3;i++){
+		for(int j=0;j<3;j++){
+		ACCE_BUF[i][j]=0;
+		GYRO_BUF[i][j]=0;
+		}
+	}
+
 }
 
 
