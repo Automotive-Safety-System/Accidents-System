@@ -9,6 +9,7 @@
 #define ACCIDENT_H_
 
 void Accident_task(void * pvParameters);
+extern void Accident_OS_Init(void);
 
 
 #endif /* ACCIDENT_H_ */

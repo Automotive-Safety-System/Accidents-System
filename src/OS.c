@@ -6,104 +6,115 @@
  */
 
 #include "OS.h"
+
 #include "tm_stm32_gps.h"
 #include "GSM.h"
 #include "ESP01.h"
 #include "MPU6050.h"
 #include "MQTT_Tasks.h"
 #include "socket_Task.h"
+
+#include "MPU6050.h"
 #include "Accident.h"
+#include "task.h"
+
+#include "queue.h"
+#include "semphr.h"
+#include "stm32f4_discovery.h"
 /*create all tasks here*/
 
 
 extern TaskHandle_t handle_gsm_os_init;
 
-extern TaskHandle_t xTask_MPU6050_Read_RawData;
+TaskHandle_t xTask_MPU6050_Read_RawData;
 
-//extern TaskHandle_t xTask_AccidentDetection_Declration;
+TaskHandle_t xTask_AccidentDetection_Declration;
+
+
+
 
 
 void OS_INIT(void){
 
+//STM_EVAL_LEDOn(LED3);
+		xTaskCreate(GPS_update_task,
+					"gps_update",
+					200,
+					NULL,
+					5,
+					NULL);
 
-	xTaskCreate(GPS_update_task,
-				"gps_update",
-				200,
-				NULL,
-				5,
-				NULL);
+		xTaskCreate(gsm_os_init,
+					"gsm_os_init",
+					200,
+					NULL,
+					5,
+					&handle_gsm_os_init);
 
-	xTaskCreate(gsm_os_init,
-				"gsm_os_init",
-				200,
-				NULL,
-				5,
-				&handle_gsm_os_init);
+		xTaskCreate(ESP_connectAccessPointTask,
+					"esp_connectAP",
+					200,
+					NULL,
+					5,
+					NULL);
 
-	xTaskCreate(ESP_connectAccessPointTask,
-				"esp_connectAP",
-				200,
-				NULL,
-				5,
-				NULL);
+		xTaskCreate(ESP_StartTCPTask,
+					"esp_connectTCP",
+					200,
+					NULL,
+					5,
+					NULL);
 
-	xTaskCreate(ESP_StartTCPTask,
-				"esp_connectTCP",
-				200,
-				NULL,
-				5,
-				NULL);
+		xTaskCreate(ESP_SendDataTask,
+					"esp_sendData",
+					200,
+					NULL,
+					5,
+					NULL);
 
-	xTaskCreate(ESP_SendDataTask,
-				"esp_sendData",
-				200,
-				NULL,
-				5,
-				NULL);
+		xTaskCreate(ESP_ReadDataTask,
+					"esp_receiveData",
+					200,
+					NULL,
+					5,
+					NULL);
 
-	xTaskCreate(ESP_ReadDataTask,
-				"esp_receiveData",
-				200,
-				NULL,
-				5,
-				NULL);
-
-	xTaskCreate(MPU6050_Read_All,
-				"MPU6050_ReadData",
-				200,
-				NULL,
-				5 ,
-				&xTask_MPU6050_Read_RawData);
-
-
-	xTaskCreate(MQTT_SendDataTask,
-				"Pub",
-				400,
-				NULL,
-				5,
-				NULL);
+		xTaskCreate(MPU6050_Read_All,
+					"MPU6050_ReadData",
+					200,
+					NULL,
+					3 ,
+					&xTask_MPU6050_Read_RawData);
 
 
-/*	xTaskCreate(socket_SendDataTask,
-				"Pub",
-				200,
-				NULL,
-				5,
-				NULL);
+		xTaskCreate(MQTT_SendDataTask,
+					"Pub",
+					400,
+					NULL,
+					5,
+					NULL);
+
+
+
+/*
+		xTaskCreate(socket_SendDataTask,
+					"Pub",
+					200,
+					NULL,
+					5,
+					NULL);
 */
 
-/*	  xTaskCreate(Accident_Detection,
-			  "Accident_Decleration",
-			  500,
-			  NULL,
-			  3 ,
-			  &xTask_AccidentDetection_Declration);
-*/
-	xTaskCreate(Accident_task,
-				  "Accident_Decleration",
-				  200,
-				  NULL,
-				  4 ,
-				  NULL);
+
+
+		xTaskCreate(Accident_task,
+					  "Accident_Decleration",
+					  200,
+					  NULL,
+					  4 ,
+					  &xTask_AccidentDetection_Declration);
+
+
+
 
 }

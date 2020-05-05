@@ -135,10 +135,21 @@ enum EXT_SYNC_SET_ENUM
 
 
 extern void MPU6050_Module_INIT();
-void MPU6050_Read_All();
-void Accident_Detection();
+extern void MPU6050_Read_All();
+extern void Accident_Detection();
 
-void HAL_I2C_EVENT_CALLBack(void);
+
+extern  float  Get_Angle_X(void);
+extern  float  Get_Angle_Y(void);
+extern  float  Get_Angle_Z(void);
+
+
+extern  float  Get_ACC_X(void);
+extern  float  Get_ACC_Y(void);
+extern  float  Get_ACC_Z(void);
+
+
+extern void HAL_I2C_EVENT_CALLBack(void);
 
 
 #endif /* MPU6050_H_ */
