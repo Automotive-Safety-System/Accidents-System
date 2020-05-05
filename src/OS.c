@@ -30,8 +30,6 @@ TaskHandle_t xTask_MPU6050_Read_RawData;
 
 TaskHandle_t xTask_AccidentDetection_Declration;
 
-xQueueHandle Accident_Detection_Queue;
-xSemaphoreHandle Accident_Detection_semphr;
 
 
 
@@ -39,10 +37,6 @@ xSemaphoreHandle Accident_Detection_semphr;
 void OS_INIT(void){
 
 //STM_EVAL_LEDOn(LED3);
-	 Accident_Detection_Queue=xQueueCreate( 1, sizeof( unsigned int ) );
-	 vSemaphoreCreateBinary( Accident_Detection_semphr );
-
-	if((Accident_Detection_Queue!=NULL)&&(Accident_Detection_semphr!=NULL)){
 		xTaskCreate(GPS_update_task,
 					"gps_update",
 					200,
@@ -102,12 +96,14 @@ void OS_INIT(void){
 
 
 
+/*
 		xTaskCreate(socket_SendDataTask,
 					"Pub",
 					200,
 					NULL,
 					5,
 					NULL);
+*/
 
 
 
@@ -118,7 +114,7 @@ void OS_INIT(void){
 					  4 ,
 					  &xTask_AccidentDetection_Declration);
 
-	}
+
 
 
 }

@@ -24,8 +24,8 @@
 #define ACCIDENT_DECETED_Crash		3
 
 
-extern xQueueHandle Accident_Detection_Queue;
-extern xSemaphoreHandle Accident_Detection_semphr;
+xQueueHandle Accident_Detection_Queue;
+xSemaphoreHandle Accident_Detection_semphr;
 
 
 static float Last_Acc_X ;
@@ -34,6 +34,22 @@ static float Last_Acc_Z ;
 
 
 static void Update_last_ACC_Values(void);
+
+
+extern void Accident_OS_Init(void)
+{
+	 Accident_Detection_Queue=xQueueCreate( 1, sizeof( unsigned int ) );
+	 vSemaphoreCreateBinary( Accident_Detection_semphr );
+
+	 if((Accident_Detection_Queue!=NULL)&&(Accident_Detection_semphr!=NULL)){
+		 printf("Created Accident queue and semphr successfully");
+	 }else {
+
+		printf("failed creating Accident queue or semphr");
+	}
+
+
+}
 
 
 void Accident_task(void * pvParameters){
