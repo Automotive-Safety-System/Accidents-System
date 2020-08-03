@@ -113,7 +113,10 @@ void OS_INIT(void){
 					  NULL,
 					  4 ,
 					  &xTask_AccidentDetection_Declration);
-
+/*
+TODO: 
+	add CAN task for diagnoses purpose
+*/
 
 
 
